@@ -1,0 +1,24 @@
+{
+  "name": "@repo/db",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "exports": {
+    "./client": "./src/index.ts"
+  },
+  "scripts": {
+    "db:migrate": "npx prisma migrate dev",
+    "db:generate": "npx prisma generate"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@prisma/client": "latest"
+  },
+  "devDependencies": {
+    "prisma": "latest",
+    "typescript": "^5.0.0"
+  }
+}
+

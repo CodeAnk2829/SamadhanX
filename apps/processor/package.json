@@ -1,0 +1,20 @@
+{
+  "name": "processor",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "npx esbuild src/index.ts --bundle --platform=node --outdir=dist",
+    "start": "node dist/index.js",
+    "dev": "node dist/index.js"
+  },
+  "dependencies": {
+    "@repo/db": "workspace:*",
+    "@types/express": "^5.0.0",
+    "express": "^4.21.2",
+    "redis": "^4.7.0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
