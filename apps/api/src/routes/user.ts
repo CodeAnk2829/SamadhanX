@@ -1,22 +1,30 @@
-import client from "@repo/db/client";
 import { Router } from "express";
-import { publisher } from "../index";
+import { authMiddleware, authorizeMiddleware } from "../middleware/auth";
+import { changePassword, deleteUser, getUpvotedComplaints, getUserProfile, signin, signout, signup, updateUserDetails } from "../controllers/userController";
 
-export const userRouter = Router();
+const router = Router();
 
-userRouter.get("/", async (req: any, res: any) => {
-    const users = await client.user.findMany();
-    if (!users) {
-        return res.status(404).json({ message: "No users found" });
-    }
-    await publisher.lPush("message", JSON.stringify(users));
-    console.log("Published message", users);
-    res.json(users);
-});
+const secret: string | undefined = process.env.JWT_SECRET;
 
-userRouter.post("/", async (req, res) => {
-    const user = await client.user.create({
-        data: req.body,
-    });
-    res.json(user);
-});
+enum Role {
+    FACULTY = "FACULTY",
+    STUDENT = "STUDENT",
+}
+
+// CREATE
+router.post("/auth/signin", signin);
+router.post("/auth/signup", signup);
+router.post("/auth/signout", authMiddleware, signout);
+
+// READ
+router.get("/me/profile", authMiddleware, authorizeMiddleware(Role), getUserProfile);
+router.get("/me/upvoted", authMiddleware, authorizeMiddleware(Role), getUpvotedComplaints); // get all complaints the logged in user has upvoted for
+
+// UPDATE
+router.patch("/me/update", authMiddleware, authorizeMiddleware(Role), updateUserDetails);
+router.patch("/me/change-password", authMiddleware, authorizeMiddleware(Role), changePassword);
+
+// DELETE
+router.delete("/me/delete", authMiddleware, authorizeMiddleware(Role), deleteUser);
+
+export const userRouter = router;

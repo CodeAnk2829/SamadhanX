@@ -5,7 +5,8 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {
@@ -14,22 +15,211 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  name      String
-  email     String
-  createdAt DateTime @default(now())
-  posts     Post[]
-
-  @@map("users")
+  id                  String                @id @default(uuid())
+  name                String
+  email               String                @unique
+  phoneNumber         String                @unique
+  password            String
+  role                Role                  @default(STUDENT)
+  complaints          Complaint[]
+  complaintAssignment ComplaintAssignment[]
+  complaintDelegation ComplaintDelegation[]
+  complaintResolution ComplaintResolution[]
+  issueIncharge       IssueIncharge?
+  resolver            Resolver?
+  notifications       Notification[]
+  upvote              Upvote[]
+  createdAt           DateTime              @default(now())
 }
 
-model Post {
-  id          String   @id @default(uuid())
-  title       String
-  description String
-  createdAt   DateTime @default(now())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+model Complaint {
+  id                  String               @id @default(uuid())
+  title               String
+  description         String
+  access              String               @default("PRIVATE")
+  postAsAnonymous     Boolean              @default(false)
+  status              Status               @default(PENDING)
+  actionTaken         Boolean              @default(false)
+  totalUpvotes        Int                  @default(0)
+  createdAt           DateTime             @default(now())
+  expiredAt           DateTime
+  userId              String
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  complaintOutbox     ComplaintOutbox?
+  complaintAssignment ComplaintAssignment?
+  complaintDelegation ComplaintDelegation?
+  complaintResolution ComplaintResolution?
+  feedbacks           Feedback[]
+  notification        Notification[]
+  tags                ComplaintCategory[]
+  attachments         Attachment[]
+  upvotes             Upvote[]
+}
 
-  @@map("posts")
+model ComplaintOutbox {
+  id          String    @id @default(uuid())
+  complaintId String    @unique
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+}
+
+model Tag {
+  id            Int                 @id @default(autoincrement())
+  tagName       String
+  complaints    ComplaintCategory[]
+  designations  DesignationTag[]
+  locations     Location[]
+  occupationTag OccupationTag[]
+}
+
+model Attachment {
+  id          String    @id @default(uuid())
+  imageUrl    String
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+}
+
+model ComplaintCategory {
+  id          String    @id @default(uuid())
+  complaintId String
+  complaints  Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  tagId       Int
+  tags        Tag       @relation(fields: [tagId], references: [id])
+
+  @@unique([complaintId, tagId])
+}
+
+model ComplaintAssignment {
+  id          String    @id @default(uuid())
+  complaintId String    @unique
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  assignedTo  String?
+  user        User?     @relation(fields: [assignedTo], references: [id], onDelete: SetNull)
+}
+
+model ComplaintDelegation {
+  id          String    @id @default(uuid())
+  complaintId String    @unique
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  delegateTo  String?
+  user        User?     @relation(fields: [delegateTo], references: [id], onDelete: SetNull)
+  delegatedAt DateTime
+}
+
+model ComplaintResolution {
+  id          String    @id @default(uuid())
+  complaintId String    @unique
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  resolvedBy  String?
+  user        User?     @relation(fields: [resolvedBy], references: [id], onDelete: SetNull)
+  resolvedAt  DateTime
+}
+
+model Designation {
+  id              Int             @id @default(autoincrement())
+  designationName String
+  designationTag  DesignationTag?
+}
+
+model DesignationTag {
+  id            Int             @id @default(autoincrement())
+  designationId Int             @unique
+  designation   Designation     @relation(fields: [designationId], references: [id], onDelete: Cascade)
+  rank          Int
+  tagId         Int
+  tag           Tag             @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  issueIncharge IssueIncharge[]
+}
+
+model Feedback {
+  id          String    @id @default(uuid())
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  rating      Float
+  comments    String
+  givenAt     DateTime
+}
+
+model Location {
+  id           Int             @id @default(autoincrement())
+  locationName String
+  tagId        Int
+  tag          Tag             @relation(fields: [tagId], references: [id])
+  incharges    IssueIncharge[]
+  resolvers    Resolver[]
+}
+
+model IssueIncharge {
+  id            String         @id @default(uuid())
+  inchargeId    String         @unique
+  incharge      User           @relation(fields: [inchargeId], references: [id], onDelete: Cascade)
+  locationId    Int
+  location      Location       @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  designationId Int
+  designation   DesignationTag @relation(fields: [designationId], references: [id])
+
+  @@unique([locationId, designationId])
+}
+
+model Notification {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  message     String
+  sentAt      DateTime
+}
+
+model Occupation {
+  id             Int             @id @default(autoincrement())
+  occupationName String
+  occupationTag  OccupationTag[]
+  resolvers      Resolver[]
+}
+
+model OccupationTag {
+  id           Int        @id @default(autoincrement())
+  occupationId Int
+  occupation   Occupation @relation(fields: [occupationId], references: [id])
+  tagId        Int
+  tag          Tag        @relation(fields: [tagId], references: [id])
+
+  @@unique([occupationId, tagId])
+}
+
+model Resolver {
+  id           String     @id @default(uuid())
+  resolverId   String     @unique
+  resolver     User       @relation(fields: [resolverId], references: [id], onDelete: Cascade)
+  locationId   Int
+  location     Location   @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  occupationId Int
+  occupation   Occupation @relation(fields: [occupationId], references: [id])
+}
+
+model Upvote {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, complaintId])
+}
+
+enum Role {
+  STUDENT
+  FACULTY
+  ISSUE_INCHARGE
+  RESOLVER
+  ADMIN
+}
+
+enum Status {
+  ASSIGNED
+  CLOSED
+  DELEGATED
+  PENDING
+  RESOLVED
+  UNRESOLVED
 }

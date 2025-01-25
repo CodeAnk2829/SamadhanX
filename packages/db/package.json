@@ -10,15 +10,18 @@
     "db:migrate": "npx prisma migrate dev",
     "db:generate": "npx prisma generate"
   },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@prisma/client": "latest"
+    "@prisma/client": "latest",
+    "ts-node": "^10.9.2"
   },
   "devDependencies": {
     "prisma": "latest",
     "typescript": "^5.0.0"
   }
 }
-
