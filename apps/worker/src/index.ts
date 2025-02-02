@@ -1,31 +1,24 @@
 import { prisma } from "@repo/db/client";
-import { createClient } from "redis";
+import { RedisClient } from "@repo/redis/client";
 
 async function startWorker() {
-    const consumer = createClient();
-
     try {
-        await consumer.connect();
-        console.log("Connected to Redis");
+        const consumer = await RedisClient.getInstance();
+        const isConnected = RedisClient.isRedisConnected();
+
+        if (!isConnected) {
+            throw new Error("Redis is not connected");
+        }
 
         while (true) {
             let result = await consumer.lIndex("worker-queue", 0);
 
             if (!result) {
                 const event = await consumer.blMove("queue", "worker-queue", "RIGHT", "LEFT", 0);
-
                 result = event;
-
-
-                await new Promise((resolve) => setTimeout(resolve, 5000));
             }
 
             const jsonData = JSON.parse(result as string);
-            console.log(jsonData);
-
-            if (jsonData.rank === 1) {
-                continue;
-            }
 
             // find the next incharge
             const nextIncharge = await prisma.issueIncharge.findFirst({
@@ -57,12 +50,23 @@ async function startWorker() {
             });
 
             if (!nextIncharge) {
-                console.log("No incharge found");
+                // remove the complaint from complaintOutbox table
+                const deletedComplaint = await prisma.complaintOutbox.deleteMany({
+                    where: {
+                        complaintId: jsonData.complaintId
+                    }
+                });
+
+                if (deletedComplaint) {
+                    // remove the complaint from the queue as we reached to highest rank
+                    await consumer.lRem("worker-queue", -1, result as string);
+                } else {
+                    console.log("deletion of a complaint from complaintOutbox table by worker unsuccessful");
+                }
+
                 await new Promise((resolve) => setTimeout(resolve, 5000));
                 continue;
             }
-
-            console.log(nextIncharge);
 
             // update the complaint with next incharge
             const escalate = await prisma.complaint.update({
@@ -139,14 +143,14 @@ async function startWorker() {
                 continue;
             }
 
-            console.log(escalate);
             await consumer.lRem("worker-queue", -1, result as string);
             await new Promise((resolve) => setTimeout(resolve, 5000));
         }
 
     } catch (err) {
         console.error(err);
+        await new Promise(resolve => setTimeout(resolve, 5000));
     }
 }
 
-startWorker();
+startWorker().catch(console.error);

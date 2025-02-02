@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@repo/db": "workspace:*",
+    "@repo/redis": "workspace:*",
     "@types/express": "^5.0.0",
     "express": "^4.21.2",
     "redis": "^4.7.0"

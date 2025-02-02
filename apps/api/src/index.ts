@@ -2,13 +2,13 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
-import { createClient } from "redis";
+// import { createClient } from "redis";
 import { userRouter } from "./routes/user";
 import { adminRouter } from "./routes/admin";
 import { complaintRouter } from "./routes/complaint";
 
 const app = express();
-const redisClient = createClient();
+// const redisClient = createClient();
 dotenv.config();
 
 app.use(express.json());
@@ -20,17 +20,6 @@ app.use("/api/v1/complaint", complaintRouter);
 app.use("/api/v1/user", userRouter);
 
 
-async function main() {
-    try {
-        await redisClient.connect();
-        console.log("Connected to Redis");
-        
-        app.listen(3000, () => {
-            console.log("Server is listening to port 3000")
-        });
-    } catch(err) {
-        console.error(err);
-    }
-}
-
-main();
+app.listen(3000, () => {
+    console.log("Server is listening to port 3000")
+});

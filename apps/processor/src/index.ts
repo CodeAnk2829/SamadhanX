@@ -1,49 +1,55 @@
 import  { prisma }  from "@repo/db/client";
-import { createClient } from "redis";
+import { RedisClient } from "@repo/redis/client";
 
-async function startProcessor() {
-    const redisClient = createClient();
-    try {
-        await redisClient.connect();
-        console.log("connected to redis");
-        
-        
-        while(true) {
-            console.log(new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString());
+async function main() {
+    const redisClient = await RedisClient.getInstance();
+    
+    async function startProcessor() {
+        try {
+            const isConnected = RedisClient.isRedisConnected();
+    
+            if(!isConnected) {
+                throw new Error("Redis is not connected");
+            }
+    
+            while(true) {
+                console.log(new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString());
+    
+                // fetch all complaints from complaintOutbox table and push them into the queue
 
-            // fetch first 10 complaints from complaintOutbox table and delete them
-            const complaints = await prisma.complaintOutbox.findMany({ 
-                where: {
-                    complaint: {
-                        expiredAt: {
-                            lt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                const complaints = await prisma.complaintOutbox.findMany({ 
+                    where: {
+                        complaint: {
+                            expiredAt: {
+                                lt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                            }
                         }
-                    }
-                },
-                select: {
-                    id: true,
-                    complaint: {
-                        select: {
-                            id: true,
-                            title: true,
-                            description: true,
-                            expiredAt: true,
-                            complaintAssignment: {
-                                select: {
-                                    user: {
-                                        select: {
-                                            issueIncharge: {
-                                                select: {
-                                                    location: true,
-                                                    designation: {
-                                                        select: {
-                                                            id: true,
-                                                            designation: {
-                                                                select: {
-                                                                    designationName: true,
-                                                                }
-                                                            },
-                                                            rank: true,
+                    },
+                    select: {
+                        id: true,
+                        complaint: {
+                            select: {
+                                id: true,
+                                title: true,
+                                description: true,
+                                expiredAt: true,
+                                complaintAssignment: {
+                                    select: {
+                                        user: {
+                                            select: {
+                                                issueIncharge: {
+                                                    select: {
+                                                        location: true,
+                                                        designation: {
+                                                            select: {
+                                                                id: true,
+                                                                designation: {
+                                                                    select: {
+                                                                        designationName: true,
+                                                                    }
+                                                                },
+                                                                rank: true,
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -54,62 +60,60 @@ async function startProcessor() {
                             }
                         }
                     }
+                });
+        
+                if(complaints.length === 0) {
+                    await new Promise((resolve) => {
+                        setTimeout(() => {
+                            resolve(1)
+                        }, 60000);
+                    });
+                    continue;
                 }
-            });
+                
+                const complaintsToBePushed = complaints.map((c: any) => {
+                    return {
+                        id: c.id,
+                        complaintId: c.complaint.id,
+                        title: c.complaint.title,
+                        description: c.complaint.description,
+                        locationId: c.complaint.complaintAssignment?.user?.issueIncharge?.location?.id,
+                        location: c.complaint.complaintAssignment?.user?.issueIncharge?.location?.locationName,
+                        designationId: c.complaint.complaintAssignment?.user?.issueIncharge?.designation?.id,
+                        designation: c.complaint.complaintAssignment?.user?.issueIncharge?.designation?.designation?.designationName,
+                        rank: c.complaint.complaintAssignment?.user?.issueIncharge?.designation?.rank,
+                        expiredAt: c.complaint.expiredAt,
+                        newExpiryDate: new Date(new Date(c.complaint.expiredAt).getTime() + (2 * 60 * 1000)).toISOString()
+                    }
+                });
     
-            if(!complaints) {
-                continue;
-            }
-            
-            const complaintsToBePushed = complaints.map((c: any) => {
-                return {
-                    id: c.id,
-                    complaintId: c.complaint.id,
-                    title: c.complaint.title,
-                    description: c.complaint.description,
-                    locationId: c.complaint.complaintAssignment?.user?.issueIncharge?.location?.id,
-                    location: c.complaint.complaintAssignment?.user?.issueIncharge?.location?.locationName,
-                    designationId: c.complaint.complaintAssignment?.user?.issueIncharge?.designation?.id,
-                    designation: c.complaint.complaintAssignment?.user?.issueIncharge?.designation?.designation?.designationName,
-                    rank: c.complaint.complaintAssignment?.user?.issueIncharge?.designation?.rank,
-                    expiredAt: c.complaint.expiredAt,
-                    newExpiryDate: new Date(new Date(c.complaint.expiredAt).getTime() + (2 * 60 * 1000)).toISOString()
-                }
-            });
+                // put them into the queue
+                for(const complaint of complaintsToBePushed) {
+                    try {
+                        const ack = await redisClient.lPush("queue", JSON.stringify(complaint));
+                        console.log("this is acknowledgement : ", ack);
 
-            console.log(complaintsToBePushed);
-
-            // put them into the queue
-            for(const complaint of complaintsToBePushed) {
-                await redisClient.lPush("queue", JSON.stringify(complaint));
-            }
-
-            // delete them from the complaintOutbox
-            const deletion = await prisma.complaintOutbox.deleteMany({
-                where: {
-                    id: {
-                        in: complaintsToBePushed.map((complaint: any) => complaint.id)
+                    } catch(err) {
+                        console.error(err);
+                        continue;
                     }
                 }
-            });
-
-            if(!deletion) {
-                continue;
+                
+                // wait for 1 minute until this processor polls the database next time
+                await new Promise((resolve) => {
+                    setTimeout(() => {
+                        resolve(1)
+                    }, 60000);
+                });
             }
-
-            console.log(deletion);
-            
-            await new Promise((resolve) => {
-                setTimeout(() => {
-                    resolve(1)
-                }, 60000);
-            });
+    
+    
+        } catch(err) {
+            console.error(err);
         }
-
-
-    } catch(err) {
-        console.error(err);
     }
+
+    startProcessor();
 }
 
-startProcessor();
+main().catch(console.error);
