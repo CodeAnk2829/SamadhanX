@@ -375,7 +375,6 @@ export const getAllComplaints = async (req: any, res: any) => {
                 designation: complaint.complaintAssignment.user.issueIncharge.designation.designation.designationName,
                 inchargeRank: complaint.complaintAssignment.user.issueIncharge.designation.rank,
                 location: complaint.complaintAssignment.user.issueIncharge.location.locationName,
-                upvotedComplaints: upvotedComplaints.map((u: any) => u.complaintId),
                 createdAt: complaint.createdAt,
                 expiredAt: complaint.expiredAt,
             }
@@ -383,7 +382,8 @@ export const getAllComplaints = async (req: any, res: any) => {
 
         res.status(200).json({
             ok: true,
-            complaintDetails
+            complaintDetails,
+            upvotedComplaints: upvotedComplaints.map((u: any) => u.complaintId),
         });
 
     } catch (err) {
@@ -398,6 +398,27 @@ export const getComplaintById = async (req: any, res: any) => {
     try {
         const userId = req.user.id;
         const complaintId = req.params.id;
+
+        const userRole = req.user.role;
+
+        if(userRole === "ISSUE_INCHARGE") {
+            // check whether the complaint is assigned to the current incharge
+            const assignedComplaint = await prisma.complaint.findFirst({
+                where: {
+                    id: complaintId,
+                    complaintAssignment: {
+                        assignedTo: userId
+                    }
+                },
+                select: {
+                    id: true
+                }
+            });
+
+            if(!assignedComplaint) {
+                throw new Error("Unauthorized. You are not assigned to this complaint");
+            }
+        }
 
         const complaint = await prisma.complaint.findUnique({
             where: {
@@ -607,7 +628,6 @@ export const getUsersComplaints = async (req: any, res: any) => {
                 designation: complaint.complaintAssignment.user.issueIncharge.designation.designation.designationName,
                 inchargeRank: complaint.complaintAssignment.user.issueIncharge.designation.rank,
                 location: complaint.complaintAssignment.user.issueIncharge.location.locationName,
-                upvotedComplaints: upvotedComplaints.map((u: any) => u.complaintId),
                 createdAt: complaint.createdAt,
                 expiredAt: complaint.expiredAt,
             }
@@ -615,7 +635,8 @@ export const getUsersComplaints = async (req: any, res: any) => {
 
         res.status(200).json({
             ok: true,
-            complaintDetails
+            complaintDetails,
+            upvotedComplaints: upvotedComplaints.map((u: any) => u.complaintId),
         });
 
     } catch (err) {

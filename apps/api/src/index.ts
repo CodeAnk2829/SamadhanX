@@ -6,6 +6,7 @@ import cookieParser from "cookie-parser";
 import { userRouter } from "./routes/user";
 import { adminRouter } from "./routes/admin";
 import { complaintRouter } from "./routes/complaint";
+import { inchargeRouter } from "./routes/incharge";
 
 const app = express();
 // const redisClient = createClient();
@@ -17,6 +18,7 @@ app.use(cookieParser());
 
 app.use("/api/v1/admin", adminRouter);
 app.use("/api/v1/complaint", complaintRouter);
+app.use("/api/v1/incharge", inchargeRouter);
 app.use("/api/v1/user", userRouter);
 
 
