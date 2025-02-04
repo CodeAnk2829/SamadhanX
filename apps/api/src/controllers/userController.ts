@@ -224,6 +224,7 @@ export const getUpvotedComplaints = async (req: any, res: any) => {
                         },
                         complaintAssignment: {
                             select: {
+                                assignedAt: true,
                                 user: {
                                     select: {
                                         id: true,
@@ -279,6 +280,7 @@ export const getUpvotedComplaints = async (req: any, res: any) => {
                 designation: uc.complaint.complaintAssignment.user.issueIncharge.designation.designation.designationName,
                 inchargeRank: uc.complaint.complaintAssignment.user.issueIncharge.designation.rank,
                 location: uc.complaint.complaintAssignment.user.issueIncharge.location.locationName,
+                assignedAt: uc.complaint.complaintAssignment.assignedAt,
                 createdAt: uc.complaint.createdAt,
                 expiredAt: uc.complaint.expiredAt,
             }

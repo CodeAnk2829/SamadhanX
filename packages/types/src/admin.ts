@@ -12,7 +12,7 @@ export const InchargeSchema = z.object({
     phoneNumber: z.string().min(10).max(10),
     role: z.nativeEnum(Role),
     locationId: z.number(),
-    designationId: z.number(),
+    designationTagId: z.number(),
 });
 
 export const RemoveSchema = z.object({

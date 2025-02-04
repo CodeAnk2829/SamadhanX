@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { authMiddleware, authorizeMiddleware } from "../middleware/auth";
-import { escalateComplaint, getAllComplaintsAssignedToIncharge } from "../controllers/inchargeController";
+import { delegateComplaint, escalateComplaint, getAllComplaintsAssignedToIncharge, markComplaintAsResolved } from "../controllers/inchargeController";
 import { getComplaintById } from "../controllers/complaintController";
+import { getResolvers, getResolversAtALocation } from "../controllers/adminController";
 
 const router = Router();
 
@@ -9,9 +10,19 @@ enum Role {
     ISSUE_INCHARGE = "ISSUE_INCHARGE",
 }
 
-router.post("/escalate", authMiddleware, authorizeMiddleware(Role), escalateComplaint);
 
+// CREATE
+
+// READ
 router.get("/get/all-complaints", authMiddleware, authorizeMiddleware(Role), getAllComplaintsAssignedToIncharge)
 router.get("/get/complaint/:id", authMiddleware, authorizeMiddleware(Role), getComplaintById);
+router.get("/get/resolvers", authMiddleware, authorizeMiddleware(Role), getResolvers);
+router.get("/get/resolvers-at-location/:locationId", authMiddleware, authorizeMiddleware(Role), getResolversAtALocation);
+
+// UPDATE
+router.patch("/delegate", authMiddleware, authorizeMiddleware(Role), delegateComplaint);
+router.patch("/escalate", authMiddleware, authorizeMiddleware(Role), escalateComplaint);
+router.patch("/mark/resolved", authMiddleware, authorizeMiddleware(Role), markComplaintAsResolved);
+
 
 export const inchargeRouter = router;

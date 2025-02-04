@@ -92,8 +92,15 @@ export const createComplaint = async (req: any, res: any) => {
                 },
                 complaintAssignment: {
                     create: {
-                        assignedTo: issueIncharge.inchargeId
+                        assignedTo: issueIncharge.inchargeId,
+                        assignedAt: new Date(currentDateTime).toISOString()
                     }
+                },
+                complaintDelegation: {
+                    create: {}
+                },
+                complaintResolution: {
+                    create: {}
                 },
                 user: {
                     connect: {
@@ -134,6 +141,7 @@ export const createComplaint = async (req: any, res: any) => {
                 },
                 complaintAssignment: {
                     select: {
+                        assignedAt: true,
                         user: {
                             select: {
                                 id: true,
@@ -200,6 +208,7 @@ export const createComplaint = async (req: any, res: any) => {
             inchargeDesignation: complaintResponse.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
             inchargeRank: complaintResponse.complaintAssignment?.user?.issueIncharge?.designation.rank,
             location: complaintResponse.complaintAssignment?.user?.issueIncharge?.location.locationName,
+            assignedAt: complaintResponse.complaintAssignment?.assignedAt,
             upvotes: complaintResponse.totalUpvotes,
             actionTaken: complaintResponse?.actionTaken,
             attachments: attachments,
@@ -296,6 +305,7 @@ export const getAllComplaints = async (req: any, res: any) => {
                 },
                 complaintAssignment: {
                     select: {
+                        assignedAt: true,
                         user: {
                             select: {
                                 id: true,
@@ -375,6 +385,7 @@ export const getAllComplaints = async (req: any, res: any) => {
                 designation: complaint.complaintAssignment.user.issueIncharge.designation.designation.designationName,
                 inchargeRank: complaint.complaintAssignment.user.issueIncharge.designation.rank,
                 location: complaint.complaintAssignment.user.issueIncharge.location.locationName,
+                assignedAt: complaint.complaintAssignment.assignedAt,
                 createdAt: complaint.createdAt,
                 expiredAt: complaint.expiredAt,
             }
@@ -447,6 +458,7 @@ export const getComplaintById = async (req: any, res: any) => {
                 },
                 complaintAssignment: {
                     select: {
+                        assignedAt: true,
                         user: {
                             select: {
                                 id: true,
@@ -521,6 +533,7 @@ export const getComplaintById = async (req: any, res: any) => {
             inchargeRank: complaintResponse.complaintAssignment?.user?.issueIncharge?.designation.rank,
             location: complaintResponse.complaintAssignment?.user?.issueIncharge?.location.locationName,
             hasUpvoted,
+            assignedAt: complaintResponse.complaintAssignment?.assignedAt,
             createdAt: complaintResponse.createdAt,
             expiredAt: complaintResponse.expiredAt,
         });
@@ -567,6 +580,7 @@ export const getUsersComplaints = async (req: any, res: any) => {
                 },
                 complaintAssignment: {
                     select: {
+                        assignedAt: true,
                         user: {
                             select: {
                                 id: true,
@@ -628,6 +642,7 @@ export const getUsersComplaints = async (req: any, res: any) => {
                 designation: complaint.complaintAssignment.user.issueIncharge.designation.designation.designationName,
                 inchargeRank: complaint.complaintAssignment.user.issueIncharge.designation.rank,
                 location: complaint.complaintAssignment.user.issueIncharge.location.locationName,
+                assignedAt: complaint.complaintAssignment.assignedAt,
                 createdAt: complaint.createdAt,
                 expiredAt: complaint.expiredAt,
             }

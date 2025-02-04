@@ -50,6 +50,7 @@ async function startWorker() {
             });
 
             if (!nextIncharge) {
+                console.log("No issue incharge found");
                 // remove the complaint from complaintOutbox table
                 const deletedComplaint = await prisma.complaintOutbox.deleteMany({
                     where: {
@@ -76,7 +77,8 @@ async function startWorker() {
                 data: {
                     complaintAssignment: {
                         update: {
-                            assignedTo: nextIncharge.incharge.id
+                            assignedTo: nextIncharge.incharge.id,
+                            assignedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
                     expiredAt: jsonData.newExpiryDate
@@ -105,6 +107,7 @@ async function startWorker() {
                     },
                     complaintAssignment: {
                         select: {
+                            assignedAt: true,
                             user: {
                                 select: {
                                     id: true,
@@ -142,6 +145,9 @@ async function startWorker() {
                 await new Promise((resolve) => setTimeout(resolve, 5000));
                 continue;
             }
+
+            console.log("Escalation successful");
+            console.log(escalate);
 
             await consumer.lRem("worker-queue", -1, result as string);
             await new Promise((resolve) => setTimeout(resolve, 5000));

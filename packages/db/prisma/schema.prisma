@@ -94,6 +94,7 @@ model ComplaintAssignment {
   complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
   assignedTo  String?
   user        User?     @relation(fields: [assignedTo], references: [id], onDelete: SetNull)
+  assignedAt  DateTime?
 }
 
 model ComplaintDelegation {
@@ -102,7 +103,7 @@ model ComplaintDelegation {
   complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
   delegateTo  String?
   user        User?     @relation(fields: [delegateTo], references: [id], onDelete: SetNull)
-  delegatedAt DateTime
+  delegatedAt DateTime?
 }
 
 model ComplaintResolution {
@@ -111,7 +112,7 @@ model ComplaintResolution {
   complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
   resolvedBy  String?
   user        User?     @relation(fields: [resolvedBy], references: [id], onDelete: SetNull)
-  resolvedAt  DateTime
+  resolvedAt  DateTime?
 }
 
 model Designation {

@@ -35,6 +35,7 @@ async function main() {
                                 expiredAt: true,
                                 complaintAssignment: {
                                     select: {
+                                        assignedAt: true,
                                         user: {
                                             select: {
                                                 issueIncharge: {
@@ -86,7 +87,9 @@ async function main() {
                         newExpiryDate: new Date(new Date(c.complaint.expiredAt).getTime() + (2 * 60 * 1000)).toISOString()
                     }
                 });
-    
+                
+                console.log("complaint to be pushed: ", complaintsToBePushed);
+                
                 // put them into the queue
                 for(const complaint of complaintsToBePushed) {
                     try {
