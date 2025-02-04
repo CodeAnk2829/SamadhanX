@@ -5,7 +5,7 @@ import { InchargeSchema, RemoveSchema, ResolverSchema, UpdateInchargeSchema, Upd
 
 export const assignIncharge = async (req: any, res: any) => {
     try {
-        const body = req.body; // { name: String, email: String, phoneNumber: string, role: String, locationId: Int, designationId: Int }
+        const body = req.body; // { name: String, email: String, phoneNumber: string, role: String, locationId: Int, designationTagId: Int }
         const parseData = InchargeSchema.safeParse(body);
 
         if (!parseData.success) {
@@ -45,7 +45,7 @@ export const assignIncharge = async (req: any, res: any) => {
                         },
                         designation: {
                             connect: {
-                                id: parseData.data.designationId
+                                id: parseData.data.designationTagId
                             }
                         }
                     }
