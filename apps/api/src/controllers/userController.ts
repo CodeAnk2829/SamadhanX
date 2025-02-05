@@ -65,6 +65,7 @@ export const signin = async (req: any, res: any) => {
             role: user.role,
             created_at: user.createdAt,
         });
+
     } catch (err) {
         res.status(400).json({
             ok: false,
@@ -122,8 +123,13 @@ export const signup = async (req: any, res: any) => {
         });
         res.status(201).json({
             token: token,
-            user: user.id,
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            created_at: user.createdAt,
         });
+
     } catch (err) {
         res.status(400).json({
             ok: false,
@@ -272,7 +278,7 @@ export const getUpvotedComplaints = async (req: any, res: any) => {
                 complainerId: uc.complaint.userId,
                 complainerName: uc.complaint.user.name,
                 attachments: uc.complaint.attachments,
-                tags: uc.complaint.tags.map((t: any) => t.tags.tagName ),
+                tags: uc.complaint.tags.map((t: any) => t.tags.tagName),
                 inchargeId: uc.complaint.complaintAssignment.user.id,
                 inchargeName: uc.complaint.complaintAssignment.user.name,
                 inchargeEmail: uc.complaint.complaintAssignment.user.email,

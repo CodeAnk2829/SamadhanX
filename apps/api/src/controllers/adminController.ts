@@ -93,6 +93,7 @@ export const assignIncharge = async (req: any, res: any) => {
             desination: newIncharge.issueIncharge?.designation.designation.designationName,
             rank: newIncharge.issueIncharge?.designation.rank
         });
+        
     } catch (err) {
         res.status(400).json({
             ok: false,
@@ -216,6 +217,7 @@ export const createDesignations = async (req: any, res: any) => {
             message: "Designations are set successfully",
             newDesignations
         });
+
     } catch(err) {
         res.status(400).json({
             ok: false,
@@ -243,6 +245,7 @@ export const createOccupations = async (req: any, res: any) => {
             message: "Occupations are set successfully",
             newOccupations
         });
+
     } catch (err) {
         res.status(400).json({
             ok: false,
@@ -466,6 +469,7 @@ export const getInchargesAtALocation = async (req: any, res: any) => {
             ok: true,
             inchargeDetails
         });
+
     } catch (err) {
         res.status(400).json({
             ok: false,
@@ -491,6 +495,7 @@ export const getLocations = async (req: any, res: any) => {
             ok: true,
             locations
         });
+
     } catch (err) {
         res.status(400).json({
             ok: false,
@@ -856,6 +861,7 @@ export const setDesignation = async (req: any, res: any) => {
             tag: designationDetails.tag.tagName,
             rank: designationDetails.rank
         });
+
     } catch(err) {
         res.status(400).json({
             ok: false,
@@ -892,6 +898,7 @@ export const setLocation = async (req: any, res: any) => {
             location: locationDetails.locationName,
             tag: locationDetails.tag.tagName
         });
+
     } catch(err) {
         res.status(400).json({
             ok: false,
@@ -923,10 +930,16 @@ export const setOccupations = async (req: any, res: any) => {
             throw new Error("Could not set occupation details");
         }
 
+        const setOccupationDetails = {
+            occupationId: newOccupations[0].occupationId,
+            occupation: newOccupations[0].occupation.occupationName,
+            tags: newOccupations.map((o: any) => o.tag.tagName)
+        }
+
         res.status(201).json({
             ok: true,
             message: "Occupation details is set successfully.",
-            newOccupations
+            setOccupationDetails
         });
 
     } catch(err) {

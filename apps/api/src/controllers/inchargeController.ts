@@ -225,7 +225,7 @@ export const escalateComplaint = async (req: any, res: any) => {
             throw new Error("Could not find the next incharge.");
         }
 
-        // // update the complaint with the next incharge
+        // update the complaint with the next incharge
         const escalate = await prisma.complaint.update({
             where: { id: complaintId },
             data: {
@@ -297,9 +297,22 @@ export const escalateComplaint = async (req: any, res: any) => {
             throw new Error("Escalation failed.");
         }
 
+        const escalationDetails = {
+            complaintId: escalate.id,
+            title: escalate.title,
+            status: escalate.status,
+            createdAt: escalate.createdAt,
+            assignedAt: escalate.complaintAssignment?.assignedAt,
+            expiredAt: escalate.expiredAt,
+            assignedTo: escalate.complaintAssignment?.user?.name,
+            designation: escalate.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
+            rank: escalate.complaintAssignment?.user?.issueIncharge?.designation.rank,
+            location: escalate.complaintAssignment?.user?.issueIncharge?.location.locationName,
+        }
+
         res.status(200).json({
             ok: true,
-            escalate
+            escalationDetails
         });
 
     } catch (err) {
