@@ -464,6 +464,8 @@ export const getComplaintById = async (req: any, res: any) => {
                 user: {
                     select: {
                         name: true,
+                        email: true,
+                        phoneNumber: true,
                     }
                 },
                 complaintAssignment: {
@@ -518,6 +520,8 @@ export const getComplaintById = async (req: any, res: any) => {
                 ...complaint,
                 user: {
                     name: "Anonymous",
+                    email: complaint.user.email,
+                    phoneNumber: complaint.user.phoneNumber
                 }
             }
         }
@@ -534,6 +538,8 @@ export const getComplaintById = async (req: any, res: any) => {
             upvotes: complaintResponse.totalUpvotes,
             complainerId: complaintResponse.userId,
             complainerName: complaintResponse.user.name,
+            complainerEmail: complaintResponse.user.email,
+            complainerPhone: complaintResponse.user.phoneNumber,
             attachments: complaintResponse.attachments,
             tags: complaintResponse.tags.map((tag: any) => tag.tags.tagName),
             assignedTo: complaintResponse.complaintAssignment?.user?.name,

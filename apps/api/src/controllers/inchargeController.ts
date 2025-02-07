@@ -111,7 +111,8 @@ export const delegateComplaint = async (req: any, res: any) => {
                     id: complaintId
                 },
                 data: {
-                    status: "DELEGATED"
+                    status: "DELEGATED",
+                    actionTaken: true
                 }
             }),
         ]);
@@ -517,7 +518,8 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
                     id: complaintId
                 },
                 data: {
-                    status: "RESOLVED"
+                    status: "RESOLVED",
+                    actionTaken: true
                 }
             }),
 

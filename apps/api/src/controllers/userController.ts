@@ -226,6 +226,8 @@ export const getUpvotedComplaints = async (req: any, res: any) => {
                             select: {
                                 id: true,
                                 name: true,
+                                email: true,
+                                phoneNumber: true,
                             }
                         },
                         complaintAssignment: {
@@ -277,6 +279,8 @@ export const getUpvotedComplaints = async (req: any, res: any) => {
                 upvotes: uc.complaint.totalUpvotes,
                 complainerId: uc.complaint.userId,
                 complainerName: uc.complaint.user.name,
+                complainerEmail: uc.complaint.user.email,
+                complainerPhone: uc.complaint.user.phoneNumber,
                 attachments: uc.complaint.attachments,
                 tags: uc.complaint.tags.map((t: any) => t.tags.tagName),
                 inchargeId: uc.complaint.complaintAssignment.user.id,
