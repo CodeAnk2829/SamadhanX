@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
-// import { createClient } from "redis";
+
 import { userRouter } from "./routes/user";
 import { adminRouter } from "./routes/admin";
 import { complaintRouter } from "./routes/complaint";

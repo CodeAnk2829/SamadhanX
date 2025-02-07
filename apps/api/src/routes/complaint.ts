@@ -1,6 +1,8 @@
 import Router from "express";
 import { authMiddleware, authorizeMiddleware } from "../middleware/auth";
 import { createComplaint, createComplaintOutbox, deletedComplaintById, getAllComplaints, getComplaintById, getUsersComplaints, upvoteComplaint } from "../controllers/complaintController";
+import { CreateComplaintSchema } from "@repo/types/complaintTypes";
+import { prisma } from "@repo/db/client";
 
 const router = Router();
 
@@ -20,10 +22,10 @@ router.get("/get/complaint/:id", authMiddleware, authorizeMiddleware(Role), getC
 router.get("/get/user-complaints", authMiddleware, authorizeMiddleware(Role), getUsersComplaints); // get an user's complaints
 
 router.get("/", createComplaintOutbox);
-// // update a complaint
+// update a complaint
 // router.put("/update/:id", authMiddleware, authorizeMiddleware(Role), async (req: any, res: any) => {
 //     try {
-//         const body = req.body; // { title: string, description: string, access: string, postAsAnonymous: boolean, location: string, tags: int[], attachments: string[] }
+//         const body = req.body; // { title: string, description: string, access: string, postAsAnonymous: boolean, locationId: Int, tags: Array<Int>, attachments: Array<String> }
 //         const parseData = CreateComplaintSchema.safeParse(body);
 //         const complaintId = req.params.id;
 //         const currentUserId = req.user.id;
@@ -37,19 +39,13 @@ router.get("/", createComplaintOutbox);
 //             select: {
 //                 userId: true,
 //                 status: true,
-//                 complaintDetails: {
+//                 complaintAssignment: {
 //                     select: {
-//                         incharge: {
+//                         user: {
 //                             select: {
 //                                 issueIncharge: {
 //                                     select: {
-//                                         location: {
-//                                             select: {
-//                                                 location: true, 
-//                                                 locationName: true,
-//                                                 locationBlock: true,
-//                                             }
-//                                         }
+//                                         locationId: true
 //                                     }
 //                                 }
 //                             }
@@ -64,7 +60,7 @@ router.get("/", createComplaintOutbox);
 //         }
         
 //         // if status is pending then don't let an user to update the complaint details
-//         if(doesComplaintBelongToLoggedInUser.status !== "PENDING") {
+//         if(doesComplaintBelongToLoggedInUser.status !== "PENDING" && doesComplaintBelongToLoggedInUser.status !== "ASSIGNED") {
 //             throw new Error("Complaint is already picked up. You cannot update the complaint details");
 //         }
 
@@ -73,8 +69,7 @@ router.get("/", createComplaintOutbox);
 //             throw new Error("Access Denied. You do not have permissions to make changes for this complaint.");
 //         }
         
-//         const currentLocationDetails = doesComplaintBelongToLoggedInUser.complaintDetails?.incharge.issueIncharge?.location;
-//         const currentLocation = `${currentLocationDetails?.location}-${currentLocationDetails?.locationName}-${currentLocationDetails?.locationBlock}`
+//         const currentLocationId = doesComplaintBelongToLoggedInUser.complaintAssignment?.user?.issueIncharge?.locationId;
 
 //         let tagData: any[] = [];
 //         let attachmentsData: any[] = [];
@@ -102,11 +97,8 @@ router.get("/", createComplaintOutbox);
 //             },
 //         }
 
-//         // check whether location is same 
-//         if(currentLocation !== parseData.data.location) {
-//             const location = parseData.data.location.split("-")[0];
-//             const locationName = parseData.data.location.split("-")[1];
-//             const locationBlock = parseData.data.location.split("-")[2];
+//         // check whether location is same or not, if not then update the location also
+//         if(currentLocationId !== parseData.data.locationId) {
             
 //             // find the least ranked incharge of the hostel of the given location
 //             const issueIncharge = await prisma.issueIncharge.findFirst({

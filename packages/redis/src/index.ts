@@ -99,4 +99,13 @@ export class RedisClient {
             return await this.client.lRem(key, count, value);
         }
     }
+
+    public async publish(channel: string, message: string): Promise<number> {
+        try {
+            return await this.client.publish(channel, message);
+        } catch (err) {
+            await this.reconnect();
+            return await this.client.publish(channel, message);
+        }
+    }
 }

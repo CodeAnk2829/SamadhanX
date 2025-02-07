@@ -1,0 +1,19 @@
+{
+  "name": "websocket",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "npx esbuild src/index.ts --bundle --platform=node --outdir=dist",
+    "start": "node dist/index.js",
+    "dev": "node dist/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@repo/ws": "workspace:*",
+    "@types/ws": "^8.5.10",
+    "ws": "^8.17.1"
+  }
+}

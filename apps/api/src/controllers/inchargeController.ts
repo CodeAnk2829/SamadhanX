@@ -1,9 +1,7 @@
 import { prisma } from "@repo/db/client";
 import { DelegateSchema } from "@repo/types/inchargeTypes";
 
-enum Status {
-    DELEGATED = "DELEGATED",
-}
+
 export const delegateComplaint = async (req: any, res: any) => {
     try {
         const body = req.body // { complaintId: string, resolverId: string }
@@ -62,26 +60,22 @@ export const delegateComplaint = async (req: any, res: any) => {
             throw new Error("Could not find complaint details.");
         }
 
-
         // check whether this complaint is assigned to currently logged in incharge
         if (complaintDetails.complaintAssignment?.user?.id !== currentInchargeId) {
             throw new Error("You are not assigned to this complaint.");
         }
-
-        if (complaintDetails.complaintDelegation?.delegateTo) {
-            throw new Error(`This complaint has already been delegated at ${complaintDetails.complaintDelegation.delegatedAt}`)
+        
+        // check whether the complaint has already delegated
+        if (complaintDetails.status === "DELEGATED") {
+            throw new Error(`This complaint has already been delegated at ${complaintDetails.complaintDelegation?.delegatedAt}`)
         }
 
+        // check if the complaint is already resolved or closed
+        if (complaintDetails.status === "CLOSED" || complaintDetails.status === "RESOLVED") {
+            throw new Error("This complaint is already resolved or closed.");
+        }
+        
         const delegate = await prisma.$transaction([
-            // Update complaint status
-            prisma.complaint.update({
-                where: {
-                    id: complaintId
-                },
-                data: {
-                    status: "DELEGATED"
-                }
-            }),
             // Update complaint delegation
             prisma.complaintDelegation.update({
                 where: {
@@ -109,7 +103,17 @@ export const delegateComplaint = async (req: any, res: any) => {
                         }
                     }
                 }
-            })
+            }),
+
+            // Update complaint status
+            prisma.complaint.update({
+                where: {
+                    id: complaintId
+                },
+                data: {
+                    status: "DELEGATED"
+                }
+            }),
         ]);
 
         if (!delegate) {
@@ -117,11 +121,11 @@ export const delegateComplaint = async (req: any, res: any) => {
         }
 
         const resolverDetails = {
-            name: delegate[1].user?.name,
-            email: delegate[1].user?.email,
-            phoneNumber: delegate[1].user?.phoneNumber,
-            occupation: delegate[1].user?.resolver?.occupation?.occupationName,
-            status: delegate[0].status,
+            name: delegate[0].user?.name,
+            email: delegate[0].user?.email,
+            phoneNumber: delegate[0].user?.phoneNumber,
+            occupation: delegate[0].user?.resolver?.occupation?.occupationName,
+            status: delegate[1].status,
         }
 
         res.status(200).json({
@@ -323,12 +327,14 @@ export const escalateComplaint = async (req: any, res: any) => {
     }
 }
 
-export const getAllComplaintsAssignedToIncharge = async (req: any, res: any) => {
+// get all active complaints only assigned to a particular issue incharge
+export const getActiveComplaintsAssignedToIncharge = async (req: any, res: any) => {
     try {
         const currentIncharge = req.user;
 
         const complaints = await prisma.complaint.findMany({
             where: {
+                status: "ASSIGNED",
                 complaintAssignment: {
                     assignedTo: currentIncharge.id
                 }
@@ -337,6 +343,24 @@ export const getAllComplaintsAssignedToIncharge = async (req: any, res: any) => 
                 createdAt: "desc"
             },
             include: {
+                complaintAssignment: {
+                    select: {
+                        assignedAt: true,
+                        user: {
+                            select: {
+                                issueIncharge: {
+                                    select: {
+                                        location: {
+                                            select: {
+                                                locationName: true,
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
                 attachments: {
                     select: {
                         id: true,
@@ -366,9 +390,30 @@ export const getAllComplaintsAssignedToIncharge = async (req: any, res: any) => 
             throw new Error("Could not find complaints assigned to you.");
         }
 
+        const complaintDetails = complaints.map((complaint: any) => {
+            return {
+                id: complaint.id,
+                title: complaint.title,
+                description: complaint.description,
+                access: complaint.access,
+                postAsAnonymous: complaint.postAsAnonymous,
+                status: complaint.status,
+                actionTaken: complaint.actionTaken,
+                upvotes: complaint.totalUpvotes,
+                complainerId: complaint.userId,
+                complainerName: complaint.user.name,
+                attachments: complaint.attachments,
+                tags: complaint.tags.map((tag: any) => tag.tags.tagName),
+                location: complaint.complaintAssignment.user.issueIncharge.location.locationName,
+                assignedAt: complaint.complaintAssignment.assignedAt,
+                createdAt: complaint.createdAt,
+                expiredAt: complaint.expiredAt,
+            }
+        });
+
         res.status(200).json({
             ok: true,
-            complaints
+            complaintDetails
         });
 
     } catch (err) {
@@ -473,6 +518,12 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
                 },
                 data: {
                     status: "RESOLVED"
+                }
+            }),
+
+            prisma.complaintOutbox.delete({
+                where: {
+                    complaintId
                 }
             })
         ]);

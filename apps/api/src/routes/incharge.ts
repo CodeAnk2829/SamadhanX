@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authMiddleware, authorizeMiddleware } from "../middleware/auth";
-import { delegateComplaint, escalateComplaint, getAllComplaintsAssignedToIncharge, markComplaintAsResolved } from "../controllers/inchargeController";
+import { delegateComplaint, escalateComplaint, getActiveComplaintsAssignedToIncharge, markComplaintAsResolved } from "../controllers/inchargeController";
 import { getComplaintById } from "../controllers/complaintController";
 import { getResolvers, getResolversAtALocation } from "../controllers/adminController";
 
@@ -14,7 +14,7 @@ enum Role {
 // CREATE
 
 // READ
-router.get("/get/all-complaints", authMiddleware, authorizeMiddleware(Role), getAllComplaintsAssignedToIncharge)
+router.get("/get/active-complaints", authMiddleware, authorizeMiddleware(Role), getActiveComplaintsAssignedToIncharge)
 router.get("/get/complaint/:id", authMiddleware, authorizeMiddleware(Role), getComplaintById);
 router.get("/get/resolvers", authMiddleware, authorizeMiddleware(Role), getResolvers);
 router.get("/get/resolvers-at-location/:locationId", authMiddleware, authorizeMiddleware(Role), getResolversAtALocation);

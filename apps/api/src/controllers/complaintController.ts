@@ -1,5 +1,6 @@
 import { prisma } from "@repo/db/client";
 import { CreateComplaintSchema } from "@repo/types/complaintTypes";
+import { RedisManager } from "../util/RedisManager";
 
 export const createComplaintOutbox = async (req: any, res: any) => {
     try {
@@ -42,6 +43,7 @@ export const createComplaintOutbox = async (req: any, res: any) => {
 
 export const createComplaint = async (req: any, res: any) => {
     try {
+        const redisClient = RedisManager.getInstance();
         const body = req.body; // { title: string, description: string, access: string, postAsAnonymous: boolean, locationId: Int, tags: Array<Int>, attachments: Array<String> }
         const parseData = CreateComplaintSchema.safeParse(body);
 
@@ -191,6 +193,14 @@ export const createComplaint = async (req: any, res: any) => {
                 }
             }
         }
+
+        // publish this event on 'creation' channel
+        await redisClient.publishMessage("creation", {
+            type: "CREATED",
+            data: {
+                complaintId: complaintResponse.id
+            }
+        });
 
         res.status(201).json({
             ok: true,

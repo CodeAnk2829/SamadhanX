@@ -84,7 +84,6 @@ async function main() {
                         designation: c.complaint.complaintAssignment?.user?.issueIncharge?.designation?.designation?.designationName,
                         rank: c.complaint.complaintAssignment?.user?.issueIncharge?.designation?.rank,
                         expiredAt: c.complaint.expiredAt,
-                        newExpiryDate: new Date(new Date(c.complaint.expiredAt).getTime() + (2 * 60 * 1000)).toISOString()
                     }
                 });
                 

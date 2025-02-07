@@ -9,6 +9,7 @@
     "dev": "node dist/index.js"
   },
   "dependencies": {
+    "@repo/redis": "workspace:*",
     "@repo/db": "workspace:*",
     "@repo/types": "workspace:*",
     "@types/bcrypt": "^5.0.2",

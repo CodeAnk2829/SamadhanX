@@ -81,7 +81,7 @@ async function startWorker() {
                             assignedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
-                    expiredAt: jsonData.newExpiryDate
+                    expiredAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString() // 2 mins after current time
                 },
                 include: {
                     attachments: {
@@ -148,6 +148,14 @@ async function startWorker() {
 
             console.log("Escalation successful");
             console.log(escalate);
+
+            // publish the event on 'escalation' channel
+            await consumer.publish("escalation", JSON.stringify({
+                type: "ESCALATED",
+                data: {
+                    complaintId: escalate.id
+                }
+            }));
 
             await consumer.lRem("worker-queue", -1, result as string);
             await new Promise((resolve) => setTimeout(resolve, 5000));
