@@ -1,5 +1,5 @@
 import { prisma } from "@repo/db/client";
-import { CreateComplaintSchema } from "@repo/types/complaintTypes";
+import { CreateComplaintSchema, UpdateComplaintSchema } from "@repo/types/complaintTypes";
 import { RedisManager } from "../util/RedisManager";
 
 export const createComplaintOutbox = async (req: any, res: any) => {
@@ -663,7 +663,7 @@ export const getUsersComplaints = async (req: any, res: any) => {
                 expiredAt: complaint.expiredAt,
             }
         });
-
+        
         res.status(200).json({
             ok: true,
             complaintDetails,
@@ -674,6 +674,201 @@ export const getUsersComplaints = async (req: any, res: any) => {
         res.status(400).json({
             ok: false,
             error: err instanceof Error ? err.message : "An error occurred while fetching complaints"
+        });
+    }
+}
+
+export const updateComplaintById = async (req: any, res: any) => {
+    try {
+        const body = req.body; // { title: string, description: string, access: string, postAsAnonymous: boolean, tags: Array<Int>, attachments: Array<String> }
+        const parseData = UpdateComplaintSchema.safeParse(body);
+        const complaintId = req.params.id;
+        const currentUserId = req.user.id;
+
+        if (!parseData.success) {
+            throw new Error("Invalid Inputs");
+        }
+
+        const doesComplaintBelongToLoggedInUser = await prisma.complaint.findUnique({
+            where: { id: complaintId },
+            select: {
+                userId: true,
+                status: true,
+                complaintAssignment: {
+                    select: {
+                        user: {
+                            select: {
+                                issueIncharge: {
+                                    select: {
+                                        locationId: true
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (!doesComplaintBelongToLoggedInUser) {
+            throw new Error("No complaint exist with this given id");
+        }
+
+        // if status is not pending or assigned then don't let an user to update the complaint details
+        if (doesComplaintBelongToLoggedInUser.status !== "PENDING" && doesComplaintBelongToLoggedInUser.status !== "ASSIGNED") {
+            throw new Error("Complaint is already picked up. You cannot update the complaint details");
+        }
+
+        // check whether the complaintId belongs to the current user
+        if (doesComplaintBelongToLoggedInUser.userId !== currentUserId) {
+            throw new Error("Access Denied. You do not have permissions to make changes for this complaint.");
+        }
+
+        let tagData: any[] = [];
+        let attachmentsData: any[] = [];
+
+        parseData.data.tags.forEach(id => {
+            tagData.push({ tagId: Number(id) });
+        });
+
+        parseData.data.attachments.forEach(url => {
+            attachmentsData.push({ imageUrl: url });
+        });
+
+        let dataToUpdate: any = {
+            title: parseData.data.title,
+            description: parseData.data.description,
+            access: parseData.data.access,
+            postAsAnonymous: parseData.data.postAsAnonymous,
+            tags: {
+                deleteMany: [{ complaintId }], // delete existing tags 
+                create: tagData // then create new tags which is given by the user
+            },
+            attachments: {
+                deleteMany: [{ complaintId }], // same as tags
+                create: attachmentsData
+            },
+        }
+
+        const updateComplaint = await prisma.complaint.update({
+            where: { id: complaintId },
+            data: dataToUpdate,
+            include: {
+                attachments: {
+                    select: {
+                        id: true,
+                        imageUrl: true
+                    }
+                },
+                tags: {
+                    select: {
+                        tags: {
+                            select: {
+                                tagName: true
+                            }
+                        }
+                    }
+                },
+                user: {
+                    select: {
+                        id: true,
+                        name: true,
+                    }
+                },
+                complaintAssignment: {
+                    select: {
+                        assignedAt: true,
+                        user: {
+                            select: {
+                                id: true,
+                                name: true,
+                                phoneNumber: true,
+                                issueIncharge: {
+                                    select: {
+                                        designation: {
+                                            select: {
+                                                designation: {
+                                                    select: {
+                                                        designationName: true,
+                                                    }
+                                                },
+                                                rank: true,
+                                            }
+                                        },
+                                        location: {
+                                            select: {
+                                                locationName: true,
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+            }
+        });
+
+        if (!updateComplaint) {
+            throw new Error("Could not create complaint. Please try again");
+        }
+
+        // check whether this user has upvoted this complaint
+        let hasUpvoted: boolean = false;
+
+        const upvote = await prisma.upvote.findFirst({
+            where: { userId: currentUserId, complaintId },
+            select: { id: true }
+        });
+
+        if (upvote) {
+            hasUpvoted = true;
+        }
+
+        const tagNames = updateComplaint.tags.map(tag => tag.tags.tagName);
+        const attachments = updateComplaint.attachments.map(attachment => attachment.imageUrl);
+
+        let complaintResponse = updateComplaint;
+
+        if (updateComplaint.postAsAnonymous) {
+            complaintResponse = {
+                ...updateComplaint,
+                user: {
+                    id: updateComplaint.user.id,
+                    name: "Anonymous",
+                }
+            }
+        }
+
+        res.status(200).json({
+            ok: true,
+            message: "Complaint updated successfully",
+            complaintId: complaintResponse.id,
+            title: complaintResponse.title,
+            description: complaintResponse.description,
+            access: complaintResponse.access,
+            postAsAnonymous: complaintResponse.postAsAnonymous,
+            userId: complaintResponse.user.id,
+            userName: complaintResponse.user.name,
+            hasUpvoted,
+            status: complaintResponse.status,
+            inchargeId: complaintResponse.complaintAssignment?.user?.id,
+            inchargeName: complaintResponse.complaintAssignment?.user?.name,
+            inchargeDesignation: complaintResponse.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
+            location: complaintResponse.complaintAssignment?.user?.issueIncharge?.location.locationName,
+            upvotes: complaintResponse.totalUpvotes,
+            actionTaken: complaintResponse.actionTaken,
+            attachments: attachments,
+            tags: tagNames,
+            assignedAt: complaintResponse.complaintAssignment?.assignedAt,
+            createdAt: complaintResponse.createdAt,
+            expiredAt: complaintResponse.expiredAt
+        });
+
+    } catch (err) {
+        res.status(400).json({
+            ok: false,
+            error: err instanceof Error ? err.message : "An error occurred while updating the complaint"
         });
     }
 }
