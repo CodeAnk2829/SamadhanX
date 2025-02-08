@@ -23,11 +23,11 @@ router.post("/set/occupations", authMiddleware, authorizeMiddleware(Role), setOc
 router.get("/get/designations", authMiddleware, authorizeMiddleware(Role), getDesignations);
 router.get("/get/incharges", authMiddleware, authorizeMiddleware(Role), getIncharges);
 router.get("/get/incharges-at-location/:locationId", authMiddleware, authorizeMiddleware(Role), getInchargesAtALocation);
-router.get("/get/locations", authMiddleware, authorizeMiddleware(Role), getLocations);
+router.get("/get/locations", authMiddleware, getLocations);
 router.get("/get/occupations", authMiddleware, authorizeMiddleware(Role), getOccupations);
 router.get("/get/resolvers", authMiddleware, authorizeMiddleware(Role), getResolvers);
 router.get("/get/resolvers-at-location/:locationId", authMiddleware, authorizeMiddleware(Role), getResolversAtALocation);
-router.get("/get/tags", getTags);
+router.get("/get/tags", authMiddleware, getTags);
 router.get("/get/tag-details/:tagId", authMiddleware, authorizeMiddleware(Role), getLocationsDesignationsAndOccupationsBasedOnTag);
 router.get("/get/users", authMiddleware, authorizeMiddleware(Role), getUsers);
 
