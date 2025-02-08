@@ -680,6 +680,7 @@ export const getUsersComplaints = async (req: any, res: any) => {
 
 export const updateComplaintById = async (req: any, res: any) => {
     try {
+        const redisClient = RedisManager.getInstance();
         const body = req.body; // { title: string, description: string, access: string, postAsAnonymous: boolean, tags: Array<Int>, attachments: Array<String> }
         const parseData = UpdateComplaintSchema.safeParse(body);
         const complaintId = req.params.id;
@@ -839,6 +840,14 @@ export const updateComplaintById = async (req: any, res: any) => {
                 }
             }
         }
+
+        // publish this event on 'updation' channel
+        await redisClient.publishMessage("updation", {
+            type: "UPDATED",
+            data: {
+                complaintId: complaintResponse.id
+            }
+        });
 
         res.status(200).json({
             ok: true,
