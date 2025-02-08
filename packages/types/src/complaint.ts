@@ -14,3 +14,12 @@ export const CreateComplaintSchema = z.object({
     tags: z.array(z.number()),
     attachments: z.array(z.string())
 });
+
+export const UpdateComplaintSchema = z.object({
+    title: z.string().min(3),
+    description: z.string().min(3),
+    access: z.nativeEnum(Access),
+    postAsAnonymous: z.boolean(),
+    tags: z.array(z.number()),
+    attachments: z.array(z.string())
+});
