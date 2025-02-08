@@ -20,7 +20,7 @@ router.get("/get/complaint/:id", authMiddleware, authorizeMiddleware(Role), getC
 router.get("/get/user-complaints", authMiddleware, authorizeMiddleware(Role), getUsersComplaints); // get an user's complaints
 router.get("/get/complaintOutbox", createComplaintOutbox);
 
-// update a complaint
+// UPDATE
 router.patch("/update/:id", authMiddleware, authorizeMiddleware(Role), updateComplaintById);
 
 // DELETE

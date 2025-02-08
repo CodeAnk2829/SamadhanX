@@ -1,10 +1,11 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "@repo/db/client";
-import { InchargeSchema, RemoveSchema, ResolverSchema, UpdateInchargeSchema, UpdateResolverSchema } from "@repo/types/adminTypes";
+import { InchargeSchema, RemoveLocationSchema, RemoveSchema, RemoveTagSchema, ResolverSchema, UpdateInchargeSchema, UpdateResolverSchema } from "@repo/types/adminTypes";
 
 
 export const assignIncharge = async (req: any, res: any) => {
     try {
+        const currentDateTime = new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString();
         const body = req.body; // { name: String, email: String, phoneNumber: string, role: String, locationId: Int, designationTagId: Int }
         const parseData = InchargeSchema.safeParse(body);
 
@@ -49,7 +50,9 @@ export const assignIncharge = async (req: any, res: any) => {
                             }
                         }
                     }
-                }
+                },
+                createdAt: currentDateTime,
+                updatedAt: currentDateTime,
             },
             select: {
                 id: true, 
@@ -65,6 +68,7 @@ export const assignIncharge = async (req: any, res: any) => {
                         },
                         designation: {
                             select: {
+                                id: true,
                                 designation: {
                                     select: {
                                         designationName: true
@@ -74,7 +78,8 @@ export const assignIncharge = async (req: any, res: any) => {
                             }
                         }
                     }
-                }
+                },
+                createdAt: true,
             }
         });
 
@@ -90,8 +95,10 @@ export const assignIncharge = async (req: any, res: any) => {
             email: newIncharge.email,
             phoneNumber: newIncharge.phoneNumber,
             location: newIncharge.issueIncharge?.location.locationName,
+            designationTagId: newIncharge.issueIncharge?.designation.id,
             desination: newIncharge.issueIncharge?.designation.designation.designationName,
-            rank: newIncharge.issueIncharge?.designation.rank
+            rank: newIncharge.issueIncharge?.designation.rank,
+            createdAt: newIncharge.createdAt
         });
         
     } catch (err) {
@@ -104,6 +111,7 @@ export const assignIncharge = async (req: any, res: any) => {
 
 export const assignResolver = async (req: any, res: any) => {
     try {
+        const currentDateTime = new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString();
         const body = req.body; // { name: String, email: String, phoneNumber: string, role: String, locationId: Int, occupationId: Int }
         const parseData = ResolverSchema.safeParse(body);
 
@@ -137,7 +145,9 @@ export const assignResolver = async (req: any, res: any) => {
                             }
                         }
                     }
-                }
+                },
+                createdAt: currentDateTime,
+                updatedAt: currentDateTime,
             },
             select: {
                 id: true,
@@ -154,6 +164,7 @@ export const assignResolver = async (req: any, res: any) => {
                         },
                         occupation: {
                             select: {
+                                id: true,
                                 occupationName: true,
                                 occupationTag: {
                                     select: {
@@ -185,6 +196,7 @@ export const assignResolver = async (req: any, res: any) => {
             email: newResolver.email,
             phoneNumber: newResolver.phoneNumber,
             location: newResolver.resolver?.location.locationName,
+            occupationId: newResolver.resolver?.occupation.id,
             occupation: newResolver.resolver?.occupation.occupationName,
             tags: tagsRelatedToNewResolver,
             createdAt: newResolver.createdAt
@@ -360,6 +372,7 @@ export const getIncharges = async (req: any, res: any) => {
                         },
                         designation: {
                             select: {
+                                id: true,
                                 designation: {
                                     select: {
                                         designationName: true,
@@ -386,6 +399,7 @@ export const getIncharges = async (req: any, res: any) => {
                 phoneNumber: incharge.phoneNumber,
                 location: incharge.issueIncharge.location.locationName,
                 tag: incharge.issueIncharge.location.tag.tagName,
+                designationTagId: incharge.issueIncharge.designation.id,
                 designation: incharge.issueIncharge.designation.designation.designationName,
                 rank: incharge.issueIncharge.designation.rank,
                 createdAt: incharge.createdAt,
@@ -433,6 +447,7 @@ export const getInchargesAtALocation = async (req: any, res: any) => {
                         },
                         designation: {
                             select: {
+                                id: true,
                                 designation: {
                                     select: {
                                         designationName: true,
@@ -459,6 +474,7 @@ export const getInchargesAtALocation = async (req: any, res: any) => {
                 phoneNumber: incharge.phoneNumber,
                 location: incharge.issueIncharge.location.locationName,
                 tag: incharge.issueIncharge.location.tag.tagName,
+                designationTagId: incharge.issueIncharge.designation.id,
                 designation: incharge.issueIncharge.designation.designation.designationName,
                 rank: incharge.issueIncharge.designation.rank,
                 createdAt: incharge.createdAt,
@@ -474,6 +490,77 @@ export const getInchargesAtALocation = async (req: any, res: any) => {
         res.status(400).json({
             ok: false,
             error: err instanceof Error ? err.message : "An error occurred while fetching incharges. Please try again."
+        });
+    }
+}
+
+export const getInchargeById = async (req: any, res: any) => {
+    try {
+        const inchargeId = req.params.id;
+
+        if (!inchargeId) {
+            throw new Error("Invalid incharge id.");
+        }
+
+        const incharge = await prisma.user.findFirst({
+            where: {
+                id: inchargeId
+            },
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                phoneNumber: true,
+                issueIncharge: {
+                    select: {
+                        location: {
+                            select: {
+                                locationName: true,
+                            }
+                        },
+                        designation: {
+                            select: {
+                                id: true,
+                                designation: {
+                                    select: {
+                                        designationName: true,
+                                    }
+                                },
+                                rank: true,
+                            }
+                        }
+                    }
+                },
+                createdAt: true
+            }
+        });
+
+        // todo: how many complaints has been assigned to this incharge
+        if (!incharge) {
+            throw new Error("Could not fetch incharge details. Please try again.");
+        }
+
+        const inchargeDetails = {
+            id: incharge.id,
+            name: incharge.name,
+            email: incharge.email,
+            phoneNumber: incharge.phoneNumber,
+            location: incharge.issueIncharge?.location.locationName,
+            designationTagId: incharge.issueIncharge?.designation.id,
+            designation: incharge.issueIncharge?.designation.designation.designationName,
+            rank: incharge.issueIncharge?.designation.rank,
+            createdAt: incharge.createdAt,
+        }
+
+        res.status(200).json({
+            ok: true,
+            inchargeDetails
+        });
+
+    } catch (err) {
+        res.status(400).json({
+            ok: false,
+            error: err instanceof Error ? err.message : "An error occurred while fetching incharge details. Please try again."
         });
     }
 }
@@ -632,6 +719,7 @@ export const getResolvers = async (req: any, res: any) => {
                         },
                         occupation: {
                             select: {
+                                id: true,
                                 occupationName: true,
                                 occupationTag: {
                                     select: {
@@ -660,6 +748,7 @@ export const getResolvers = async (req: any, res: any) => {
                 email: r.email,
                 phoneNumber: r.phoneNumber,
                 location: r.resolver.location.locationName,
+                occupationId: r.resolver.occupation.id,
                 occupation: r.resolver.occupation.occupationName,
                 tags: r.resolver.occupation.occupationTag.map((o: any) => o.tag.tagName ),
                 createdAt: r.createdAt,
@@ -703,6 +792,7 @@ export const getResolversAtALocation = async (req: any, res: any) => {
                         },
                         occupation: {
                             select: {
+                                id: true,
                                 occupationName: true,
                                 occupationTag: {
                                     select: {
@@ -731,6 +821,7 @@ export const getResolversAtALocation = async (req: any, res: any) => {
                 email: r.email,
                 phoneNumber: r.phoneNumber,
                 location: r.resolver.location.locationName,
+                occupationId: r.resolver.occupation.id,
                 occupation: r.resolver.occupation.occupationName,
                 tags: r.resolver.occupation.occupationTag.map((o: any) => o.tag.tagName),
                 createdAt: r.createdAt,
@@ -747,6 +838,74 @@ export const getResolversAtALocation = async (req: any, res: any) => {
         res.status(400).json({
             ok: false,
             error: err instanceof Error ? err.message : "An error occurred while fetching the resolvers details at a particular location."
+        });
+    }
+}
+
+export const getResolverById = async (req: any, res: any) => {
+    try {
+        const resolverId = req.params.id;
+
+        const resolver = await prisma.user.findUnique({
+            where: { id: resolverId },
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                phoneNumber: true,
+                createdAt: true,
+                resolver: {
+                    select: {
+                        occupation: {
+                            select: {
+                                id: true,
+                                occupationName: true,
+                                occupationTag: {
+                                    select: {
+                                        tag: {
+                                            select: {
+                                                tagName: true,
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        location: {
+                            select: {
+                                locationName: true,
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (!resolver) {
+            throw new Error("Could not fetch resolver details. Please try again.");
+        }
+
+        const resolverDetails = {
+            id: resolver.id,
+            name: resolver.name,
+            email: resolver.email,
+            phoneNumber: resolver.phoneNumber,
+            location: resolver.resolver?.location.locationName,
+            occupationId: resolver.resolver?.occupation.id,
+            occupation: resolver.resolver?.occupation.occupationName,
+            tags: resolver.resolver?.occupation.occupationTag.map((o: any) => o.tag.tagName),
+            createdAt: resolver.createdAt,
+        }
+
+        res.status(200).json({
+            ok: true,
+            resolverDetails
+        });
+
+    } catch (err) {
+        res.status(400).json({
+            ok: false,
+            error: err instanceof Error ? err.message : "An error occurred while fetching resolver details. Please try again."
         });
     }
 }
@@ -950,4 +1109,305 @@ export const setOccupations = async (req: any, res: any) => {
     }
 }
 
+export const updateInchargeDetails = async (req: any, res: any) => {
+    try {
+        const currentDateTime = new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString();
+        const inchargeId = req.params.id;
+        const body = req.body; // { name: string, email: string, phoneNumber: string, locationId: number, designationTagId: number, rank: number }
+        const parseData = UpdateInchargeSchema.safeParse(body);
 
+        if (!parseData.success) {
+            throw new Error("Invalid inputs");
+        }
+
+        // first check the given inchargeId is valid
+        const incharge = await prisma.user.findUnique({
+            where: {
+                id: inchargeId
+            },
+            select: {
+                role: true,
+            }
+        });
+
+        if (!incharge) {
+            throw new Error("Incharge not found.");
+        }
+
+        if (incharge.role !== "ISSUE_INCHARGE") {
+            throw new Error("Invalid role");
+        }
+
+        const updatedIncharge = await prisma.user.update({
+            where: {
+                id: inchargeId
+            },
+            data: {
+                name: parseData.data.name,
+                email: parseData.data.email,
+                phoneNumber: parseData.data.phoneNumber,
+                issueIncharge: {
+                    update: {
+                        location: {
+                            connect: {
+                                id: parseData.data.locationId
+                            }
+                        },
+                        designation: {
+                            connect: {
+                                id: parseData.data.designationTagId,
+                                rank: parseData.data.rank,
+                            }
+                        }
+                    }
+                },
+                updatedAt: currentDateTime
+            },
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                phoneNumber: true,
+                issueIncharge: {
+                    select: {
+                        location: {
+                            select: {
+                                locationName: true,
+                            }
+                        },
+                        designation: {
+                            select: {
+                                id: true,
+                                designation: {
+                                    select: {
+                                        designationName: true,
+                                    }
+                                },
+                                rank: true,
+                            }
+                        }
+                    }
+                },
+                createdAt: true,           
+                updatedAt: true,
+            }
+        });
+
+        if (!updatedIncharge) {
+            throw new Error("Could not update incharge details.");
+        }
+
+        const updatedInchargeDetails = {
+            id: updatedIncharge.id,
+            name: updatedIncharge.name,
+            email: updatedIncharge.email,
+            phoneNumber: updatedIncharge.phoneNumber,
+            location: updatedIncharge.issueIncharge?.location.locationName,
+            designationTagId: updatedIncharge.issueIncharge?.designation.id,
+            designation: updatedIncharge.issueIncharge?.designation.designation.designationName,
+            rank: updatedIncharge.issueIncharge?.designation.rank,
+            createdAt: updatedIncharge.createdAt,
+            updatedAt: updatedIncharge.updatedAt
+        }
+
+        res.status(200).json({
+            ok: true,
+            message: "Incharge details updated successfully.",
+            inchargeDetails: updatedInchargeDetails
+        });
+
+    } catch (err) {
+        res.status(400).json({
+            ok: false,
+            error: err instanceof Error ? err.message : "An error occurred while updating incharge details."
+        });
+    }
+}
+
+export const updateResolverDetails = async (req: any, res: any) => {
+    try {
+        const currentDateTime = new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString();
+        const resolverId = req.params.id;
+        const body = req.body; // { name: string, email: string, phoneNumber: string, locationId: number, occupationId: number }
+        const parseData = UpdateResolverSchema.safeParse(body);
+
+        if (!parseData.success) {
+            throw new Error("Invalid inputs");
+        }
+
+        // first check the given resolverId is valid
+        const resolver = await prisma.user.findUnique({
+            where: {
+                id: resolverId,
+            },
+            select: {
+                role: true,
+            }
+        });
+
+        if (!resolver) {
+            throw new Error("Resolver not found. Update operation failed");
+        }
+
+        if (resolver.role !== "RESOLVER") {
+            throw new Error("Invalid role");
+        }
+
+        const updatedResolver = await prisma.user.update({
+            where: {
+                id: resolverId
+            },
+            data: {
+                name: parseData.data.name,
+                email: parseData.data.email,
+                phoneNumber: parseData.data.phoneNumber,
+                resolver: {
+                    update: {
+                        location: {
+                            connect: {
+                                id: parseData.data.locationId
+                            }
+                        },
+                        occupation: {
+                            connect: {
+                                id: parseData.data.occupationId
+                            }
+                        }
+                    }
+                },
+                updatedAt: currentDateTime,
+            },
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                phoneNumber: true,
+                createdAt: true,
+                updatedAt: true,
+                resolver: {
+                    select: {
+                        occupation: {
+                            select: {
+                                id: true,
+                                occupationName: true,
+                                occupationTag: {
+                                    select: {
+                                        tag: {
+                                            select: {
+                                                tagName: true,
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        location: {
+                            select: {
+                                locationName: true,
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (!updatedResolver) {
+            throw new Error("Could not update resolver details.");
+        }
+
+        const updatedResolverDetails = {
+            id: updatedResolver.id,
+            name: updatedResolver.name,
+            email: updatedResolver.email,
+            phoneNumber: updatedResolver.phoneNumber,
+            location: updatedResolver.resolver?.location.locationName,
+            occupationId: updatedResolver.resolver?.occupation.id,
+            occupation: updatedResolver.resolver?.occupation.occupationName,
+            tags: updatedResolver.resolver?.occupation.occupationTag.map((o: any) => o.tag.tagName),
+            createdAt: updatedResolver.createdAt,
+            updatedAt: updatedResolver.updatedAt
+        }
+
+        res.status(200).json({
+            ok: true,
+            message: "Resolver details updated successfully.",
+            resolverDetails: updatedResolverDetails
+        });
+
+    } catch (err) {
+        res.status(400).json({
+            ok: false,
+            error: err instanceof Error ? err.message : "An error occurred while updating resolver details."
+        });
+    }
+}
+
+export const removeLocations = async (req: any, res: any) => {
+    try {
+        const body = req.body; // { locations: Array<Int> }
+        const parseData = RemoveLocationSchema.safeParse(body);
+
+        if (!parseData.success) {
+            throw new Error("Invalid inputs");
+        }
+
+        const removedLocations = await prisma.location.deleteMany({
+            where: {
+                id: {
+                    in: parseData.data.locations
+                }
+            }
+        });
+
+        if (!removeLocations) {
+            throw new Error("Could not remove some locations while some locations might be deleted.");
+        }
+
+        res.status(200).json({
+            ok: true,
+            message: "Locations removed successfully.",
+            removedLocations
+        });
+
+    } catch (err) {
+        res.status(400).json({
+            ok: false,
+            error: err instanceof Error ? err.message : "An error occurred while removing locations."
+        });
+    }
+}
+
+export const removeTags = async (req: any, res: any) => {
+    try {
+        const body = req.body; // { tags: Array<Int> }
+        const parseData = RemoveTagSchema.safeParse(body);
+
+        if (!parseData.success) {
+            throw new Error("Invalid inputs");
+        }
+
+        const removedTags = await prisma.tag.deleteMany({
+            where: {
+                id: {
+                    in: parseData.data.tags
+                }
+            }
+        });
+
+        if (!removedTags) {
+            throw new Error("Could not remove some tags while some tags might be deleted.");
+        }
+
+        res.status(200).json({
+            ok: true,
+            message: "Tags removed successfully.",
+            removedTags
+        });
+
+    } catch (err) {
+        res.status(400).json({
+            ok: false,
+            error: err instanceof Error ? err.message : "An error occurred while removing tags."
+        })
+    }
+}

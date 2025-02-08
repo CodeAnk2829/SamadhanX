@@ -19,6 +19,14 @@ export const RemoveSchema = z.object({
     userId: z.string()
 });
 
+export const RemoveLocationSchema = z.object({
+    locations: z.array(z.number())
+});
+
+export const RemoveTagSchema = z.object({
+    tags: z.array(z.number())
+})
+
 export const ResolverSchema = z.object({
     name: z.string().min(3),
     email: z.string().email(),
@@ -30,24 +38,20 @@ export const ResolverSchema = z.object({
 });
 
 export const UpdateInchargeSchema = z.object({
-    name: z.string().min(3).optional(),
-    email: z.string().email().optional(),
-    // phoneNumber: z.string().regex(/^[6-9]\d{9}$/).optional(),
+    name: z.string().min(3),
+    email: z.string().email(),
+    // phoneNumber: z.string().regex(/^[6-9]\d{9}$/),
     phoneNumber: z.string().min(10).max(10),
-    password: z.string().min(6).optional(),
-    role: z.nativeEnum(Role).optional(),
-    location: z.string().optional(),
-    designation: z.string().min(3).optional(),
-    rank: z.number().optional(),
+    designationTagId: z.number(),
+    locationId: z.number(),
+    rank: z.number(),
 });
 
 export const UpdateResolverSchema = z.object({
-    name: z.string().min(3).optional(),
-    email: z.string().email().optional(),
-    // phoneNumber: z.string().regex(/^[6-9]\d{9}$/).optional(),
+    name: z.string().min(3),
+    email: z.string().email(),
+    // phoneNumber: z.string().regex(/^[6-9]\d{9}$/),
     phoneNumber: z.string().min(10).max(10),
-    password: z.string().min(6).optional(),
-    role: z.nativeEnum(Role).optional(),
-    location: z.string().min(3).optional(),
-    occupation: z.string().min(3).optional(),
+    locationId: z.number(),
+    occupationId: z.number(),
 });

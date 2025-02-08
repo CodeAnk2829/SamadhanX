@@ -749,6 +749,7 @@ export const updateComplaintById = async (req: any, res: any) => {
                 deleteMany: [{ complaintId }], // same as tags
                 create: attachmentsData
             },
+            updatedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
         }
 
         const updateComplaint = await prisma.complaint.update({
@@ -871,7 +872,8 @@ export const updateComplaintById = async (req: any, res: any) => {
             tags: tagNames,
             assignedAt: complaintResponse.complaintAssignment?.assignedAt,
             createdAt: complaintResponse.createdAt,
-            expiredAt: complaintResponse.expiredAt
+            expiredAt: complaintResponse.expiredAt,
+            updatedAt: complaintResponse.updatedAt
         });
 
     } catch (err) {

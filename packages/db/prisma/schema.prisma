@@ -30,6 +30,7 @@ model User {
   notifications       Notification[]
   upvote              Upvote[]
   createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
 }
 
 model Complaint {
@@ -43,6 +44,7 @@ model Complaint {
   totalUpvotes        Int                  @default(0)
   createdAt           DateTime             @default(now())
   expiredAt           DateTime
+  updatedAt           DateTime             @updatedAt
   userId              String
   user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   complaintOutbox     ComplaintOutbox?

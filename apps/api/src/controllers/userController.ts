@@ -4,10 +4,10 @@ import bcrypt from "bcryptjs";
 import { PasswordSchema, SigninSchema, SignupSchema, UpdateSchema } from "@repo/types/userTypes";
 
 const secret: string | undefined = process.env.JWT_SECRET;
-const currentDateTime = Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000);
 
 export const signin = async (req: any, res: any) => {
     try {
+        const currentDateTime = new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString();
         const body = req.body; // { email: "" or phoneNumber: "", password: "", role: "" }
         const parseData = SigninSchema.safeParse(body);
 
@@ -54,7 +54,7 @@ export const signin = async (req: any, res: any) => {
         // expires in 30 days
         res.cookie("token", token, {
             httpOnly: true,
-            expires: new Date(currentDateTime + 30 * 24 * 60 * 60 * 1000),
+            expires: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (30 * 24 * 60 * 60 * 1000)),
         });
 
         res.status(200).json({
@@ -76,6 +76,7 @@ export const signin = async (req: any, res: any) => {
 
 export const signup = async (req: any, res: any) => {
     try {
+        const currentDateTime = new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString();
         const body = req.body; // { name: string, email: string, phoneNumber: string, password: string, role: string }
         const parseData = SignupSchema.safeParse(body);
 
@@ -119,8 +120,9 @@ export const signup = async (req: any, res: any) => {
 
         res.cookie("token", token, {
             httpOnly: true,
-            expires: new Date(currentDateTime + 30 * 24 * 60 * 60 * 1000),
+            expires: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (30 * 24 * 60 * 60 * 1000)),
         });
+        
         res.status(201).json({
             token: token,
             id: user.id,
@@ -148,10 +150,7 @@ export const signout = async (req: any, res: any) => {
     } catch (err) {
         res.status(400).json({
             ok: false,
-            error:
-                err instanceof Error
-                    ? err.message
-                    : "An error occurred while signing out.",
+            error: err instanceof Error ? err.message : "An error occurred while signing out.",
         });
     }
 }
@@ -311,6 +310,7 @@ export const getUpvotedComplaints = async (req: any, res: any) => {
 
 export const updateUserDetails = async (req: any, res: any) => {
     try {
+        const currentDateTime = new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString();
         const userId = req.user.id;
         const body = req.body; // { name: string, email: string, phoneNumber: string }
         const parseData = UpdateSchema.safeParse(body);
@@ -325,7 +325,8 @@ export const updateUserDetails = async (req: any, res: any) => {
             data: {
                 name: parseData.data.name,
                 email: parseData.data.email,
-                phoneNumber: parseData.data.phoneNumber
+                phoneNumber: parseData.data.phoneNumber,
+                updatedAt: currentDateTime,
             },
             select: {
                 id: true,
@@ -333,6 +334,7 @@ export const updateUserDetails = async (req: any, res: any) => {
                 email: true,
                 phoneNumber: true,
                 role: true,
+                updatedAt: true,
             }
         });
 
@@ -348,6 +350,7 @@ export const updateUserDetails = async (req: any, res: any) => {
             email: userDetailsAfterUpdate.email,
             phoneNumber: userDetailsAfterUpdate.phoneNumber,
             role: userDetailsAfterUpdate.role,
+            updatedAt: userDetailsAfterUpdate.updatedAt,
         });
 
     } catch (err) {
@@ -392,7 +395,9 @@ export const changePassword = async (req: any, res: any) => {
         const newPassword = bcrypt.hashSync(parseData.data.newPassword, 10);
         const updatedUser = await prisma.user.update({
             where: { id: userId },
-            data: { password: newPassword },
+            data: { 
+                password: newPassword,
+            },
             select: { id: true }
         });
 
@@ -405,6 +410,7 @@ export const changePassword = async (req: any, res: any) => {
             message: "Password updated successfully.",
             userId: updatedUser.id
         });
+
     } catch (err) {
         res.status(400).json({
             ok: false,
@@ -432,6 +438,7 @@ export const deleteUser = async (req: any, res: any) => {
             message: "User account deleted successfully.",
             id: deletedUser.id
         });
+
     } catch (err) {
         res.status(400).json({
             ok: false,
