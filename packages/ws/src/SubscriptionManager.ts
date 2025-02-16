@@ -26,6 +26,9 @@ export class SubscriptionManager {
 
         this.subscriptions.set(userId, (this.subscriptions.get(userId) || []).concat(subscription));
         this.reverseSubscriptions.set(subscription, (this.reverseSubscriptions.get(subscription) || []).concat(userId));
+        this.reverseSubscriptions.forEach((value, key) => {
+            console.log(key, value);
+        });
         if (this.reverseSubscriptions.get(subscription)?.length === 1) {
 
             this.redisClient.subscribe(subscription, this.redisCallbackHandler);
@@ -34,7 +37,10 @@ export class SubscriptionManager {
 
     private redisCallbackHandler = (message: string, channel: string) => {
         const parsedMessage = JSON.parse(message);
-        this.reverseSubscriptions.get(channel)?.forEach(s => UserManager.getInstance().getUser(s)?.emit(parsedMessage));
+        // find all the users who are INCHARGE or OTHERS
+        // All the clients from OTHERS role will get the messages while only that incharge will
+        // get the message who is responsible for that complaint
+        this.reverseSubscriptions.get(channel)?.forEach(userId => UserManager.getInstance().getUser(userId)?.emit(parsedMessage));
     }
 
     public unsubscribe(userId: string, subscription: string) {
