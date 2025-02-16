@@ -70,7 +70,7 @@ async function startWorker() {
             }
 
             // update the complaint with next incharge
-            const escalate = await prisma.complaint.update({
+            const escalateComplaint = await prisma.complaint.update({
                 where: {
                     id: jsonData.complaintId
                 },
@@ -139,7 +139,7 @@ async function startWorker() {
                 }
             });
 
-            if (!escalate) {
+            if (!escalateComplaint) {
                 // retry
                 console.log("Escalation failed");
                 await new Promise((resolve) => setTimeout(resolve, 5000));
@@ -147,13 +147,18 @@ async function startWorker() {
             }
 
             console.log("Escalation successful");
-            console.log(escalate);
+            console.log(escalateComplaint);
 
-            // publish the event on 'escalation' channel
+            // publish this event on 'creation' channel
             await consumer.publish("escalation", JSON.stringify({
                 type: "ESCALATED",
                 data: {
-                    complaintId: escalate.id
+                    complaintId: escalateComplaint.id,
+                    title: escalateComplaint.title,
+                    wasAssignedTo: jsonData.inchargeId,
+                    isAssignedTo: escalateComplaint.complaintAssignment?.user?.id as string,
+                    inchargeName: escalateComplaint.complaintAssignment?.user?.name as string,
+                    designation: escalateComplaint.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName as string,
                 }
             }));
 

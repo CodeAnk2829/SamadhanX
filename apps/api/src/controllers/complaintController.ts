@@ -1,6 +1,6 @@
 import { prisma } from "@repo/db/client";
 import { CreateComplaintSchema, UpdateComplaintSchema } from "@repo/types/complaintTypes";
-import { RedisManager } from "../util/RedisManager";
+import { RedisManager, CREATED, UPDATED, UPVOTED, DELETED } from "../util/RedisManager";
 
 export const createComplaintOutbox = async (req: any, res: any) => {
     try {
@@ -196,9 +196,11 @@ export const createComplaint = async (req: any, res: any) => {
 
         // publish this event on 'creation' channel
         await redisClient.publishMessage("creation", {
-            type: "CREATED",
+            type: CREATED,
             data: {
-                complaintId: complaintResponse.id
+                complaintId: complaintResponse.id,
+                title: complaintResponse.title,
+                isAssignedTo: complaintResponse.complaintAssignment?.user?.id as string
             }
         });
 
@@ -237,6 +239,7 @@ export const createComplaint = async (req: any, res: any) => {
 
 export const deletedComplaintById = async (req: any, res: any) => {
     try {
+        const redisClient = RedisManager.getInstance();
         const complaintId = req.params.id;
         const currentUserId = req.user.id;
 
@@ -256,18 +259,41 @@ export const deletedComplaintById = async (req: any, res: any) => {
 
         const deletedComplaint = await prisma.complaint.delete({
             where: { id: complaintId },
-            select: { id: true }
+            select: { 
+                id: true,
+                title: true, 
+                complaintAssignment: {
+                    select: {
+                        user: {
+                            select: {
+                                id: true,
+                            }
+                        }
+                    }
+                }
+            }
         });
 
         if (!deletedComplaint) {
             throw new Error("Could not delete complaint. Please try again.");
         }
 
+        // publish this event on "deletion" channel
+        await redisClient.publishMessage("deletion", {
+            type: DELETED,
+            data: {
+                complaintId,
+                title: deletedComplaint.title,
+                wasAssignedTo: deletedComplaint.complaintAssignment?.user?.id as string
+            }
+        });
+        
         res.status(200).json({
             ok: true,
             message: "Complaint deleted successfully.",
             complaintId
         });
+
     } catch (err) {
         res.status(400).json({
             ok: false,
@@ -844,9 +870,18 @@ export const updateComplaintById = async (req: any, res: any) => {
 
         // publish this event on 'updation' channel
         await redisClient.publishMessage("updation", {
-            type: "UPDATED",
+            type: UPDATED,
             data: {
-                complaintId: complaintResponse.id
+                complaintId: complaintResponse.id,
+                title: complaintResponse.title,
+                description: complaintResponse.description,
+                access: complaintResponse.access,
+                postAsAnonymous: complaintResponse.postAsAnonymous,
+                status: UPDATED,
+                isAssignedTo: complaintResponse.complaintAssignment?.user?.id as string,
+                attachments: complaintResponse.attachments,
+                tags: complaintResponse.tags,
+                updatedAt: complaintResponse.updatedAt,
             }
         });
 
@@ -886,6 +921,7 @@ export const updateComplaintById = async (req: any, res: any) => {
 
 export const upvoteComplaint = async (req: any, res: any) => {
     try {
+        const redisClient = RedisManager.getInstance();
         const complaintId: string = req.params.id;
         const userId: string = req.user.id;
 
@@ -936,13 +972,35 @@ export const upvoteComplaint = async (req: any, res: any) => {
                 totalUpvotes: finalAction
             },
             select: {
-                totalUpvotes: true
+                title: true,
+                totalUpvotes: true,
+                complaintAssignment: {
+                    select: {
+                        user: {
+                            select: {
+                                id: true,
+                            }
+                        }
+                    }
+                }
             }
         });
 
         if (!upvotes) {
             throw new Error("Could not count total upvotes for the complaint");
         }
+
+        // publish this event on 'updation' channel
+        await redisClient.publishMessage("updation", {
+            type: UPVOTED,
+            data: {
+                complaintId,
+                title: upvotes.title,
+                upvotes: upvotes.totalUpvotes,
+                hasUpvoted: hasUpvoted ? false : true,
+                isAssignedTo: upvotes.complaintAssignment?.user?.id as string,
+            }
+        });
 
         res.status(200).json({
             ok: true,

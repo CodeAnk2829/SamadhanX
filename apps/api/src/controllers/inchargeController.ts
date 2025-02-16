@@ -1,6 +1,6 @@
 import { prisma } from "@repo/db/client";
 import { DelegateSchema } from "@repo/types/inchargeTypes";
-
+import { ESCALATED, RedisManager } from "../util/RedisManager";
 
 export const delegateComplaint = async (req: any, res: any) => {
     try {
@@ -145,6 +145,7 @@ export const delegateComplaint = async (req: any, res: any) => {
 
 export const escalateComplaint = async (req: any, res: any) => {
     try {
+        const redisClient = RedisManager.getInstance();
         const { complaintId } = req.body; // { complaintId: string }
         const currentIncharge = req.user;
 
@@ -231,7 +232,7 @@ export const escalateComplaint = async (req: any, res: any) => {
         }
 
         // update the complaint with the next incharge
-        const escalate = await prisma.complaint.update({
+        const escalateComplaint = await prisma.complaint.update({
             where: { id: complaintId },
             data: {
                 complaintAssignment: {
@@ -298,21 +299,34 @@ export const escalateComplaint = async (req: any, res: any) => {
             }
         });
 
-        if (!escalate) {
+        if (!escalateComplaint) {
             throw new Error("Escalation failed.");
         }
 
+        // publish this event on 'creation' channel
+        await redisClient.publishMessage("escalation", {
+            type: ESCALATED,
+            data: {
+                complaintId: escalateComplaint.id,
+                title: escalateComplaint.title,
+                wasAssignedTo: currentIncharge.id,
+                isAssignedTo: escalateComplaint.complaintAssignment?.user?.id as string,
+                inchargeName: escalateComplaint.complaintAssignment?.user?.name as string,
+                designation: escalateComplaint.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName as string,
+            }
+        });
+
         const escalationDetails = {
-            complaintId: escalate.id,
-            title: escalate.title,
-            status: escalate.status,
-            createdAt: escalate.createdAt,
-            assignedAt: escalate.complaintAssignment?.assignedAt,
-            expiredAt: escalate.expiredAt,
-            assignedTo: escalate.complaintAssignment?.user?.name,
-            designation: escalate.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
-            rank: escalate.complaintAssignment?.user?.issueIncharge?.designation.rank,
-            location: escalate.complaintAssignment?.user?.issueIncharge?.location.locationName,
+            complaintId: escalateComplaint.id,
+            title: escalateComplaint.title,
+            status: escalateComplaint.status,
+            createdAt: escalateComplaint.createdAt,
+            assignedAt: escalateComplaint.complaintAssignment?.assignedAt,
+            expiredAt: escalateComplaint.expiredAt,
+            assignedTo: escalateComplaint.complaintAssignment?.user?.name,
+            designation: escalateComplaint.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
+            rank: escalateComplaint.complaintAssignment?.user?.issueIncharge?.designation.rank,
+            location: escalateComplaint.complaintAssignment?.user?.issueIncharge?.location.locationName,
         }
 
         res.status(200).json({

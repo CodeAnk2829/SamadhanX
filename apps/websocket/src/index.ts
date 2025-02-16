@@ -1,10 +1,17 @@
 import { WebSocketServer } from "ws";
-import { UserManager } from "@repo/ws/userManager";
+import { UserManager } from "@repo/ws2/userManager";
 const wss = new WebSocketServer({ port: 3001 });
 
 wss.on("connection", (ws) => {
     console.log("connected to ws server");
-    ws.send("hello mere dost");
-    UserManager.getInstance().addUser(ws);
-});
 
+    ws.on('message', (message: string) => {
+        console.log('received: %s', message);
+        const userId = JSON.parse(message).userId;
+        const role = JSON.parse(message).role;
+        
+        UserManager.getInstance().addUser(userId, role, message, ws);
+    });
+
+    ws.send('Hello! Message From Server!!');
+});

@@ -38,6 +38,7 @@ async function main() {
                                         assignedAt: true,
                                         user: {
                                             select: {
+                                                id: true,
                                                 issueIncharge: {
                                                     select: {
                                                         location: true,
@@ -80,6 +81,7 @@ async function main() {
                         description: c.complaint.description,
                         locationId: c.complaint.complaintAssignment?.user?.issueIncharge?.location?.id,
                         location: c.complaint.complaintAssignment?.user?.issueIncharge?.location?.locationName,
+                        inchargeId: c.complaint.complaintAssignment?.user?.id,
                         designationId: c.complaint.complaintAssignment?.user?.issueIncharge?.designation?.id,
                         designation: c.complaint.complaintAssignment?.user?.issueIncharge?.designation?.designation?.designationName,
                         rank: c.complaint.complaintAssignment?.user?.issueIncharge?.designation?.rank,

@@ -111,9 +111,15 @@ importers:
       '@repo/ws':
         specifier: workspace:*
         version: link:../../packages/ws
+      '@repo/ws2':
+        specifier: workspace:*
+        version: link:../../packages/ws2
       '@types/ws':
         specifier: ^8.5.10
         version: 8.5.14
+      cookie:
+        specifier: ^1.0.2
+        version: 1.0.2
       ws:
         specifier: ^8.17.1
         version: 8.18.0
@@ -241,6 +247,21 @@ importers:
         version: 5.5.4
 
   packages/ws:
+    dependencies:
+      '@types/redis':
+        specifier: ^4.0.11
+        version: 4.0.11
+      '@types/ws':
+        specifier: ^8.5.10
+        version: 8.5.14
+      redis:
+        specifier: ^4.7.0
+        version: 4.7.0
+      ws:
+        specifier: ^8.17.1
+        version: 8.18.0
+
+  packages/ws2:
     dependencies:
       '@types/redis':
         specifier: ^4.0.11
@@ -1230,6 +1251,10 @@ packages:
   cookie@0.7.2:
     resolution: {integrity: sha512-yki5XnKuf750l50uGTllt6kKILY4nQ1eNIQatoXEByZ5dWgnKqbnqmTrBE5B4N7lrMJKQ2ytWMiTO2o0v6Ew/w==}
     engines: {node: '>= 0.6'}
+
+  cookie@1.0.2:
+    resolution: {integrity: sha512-9Kr/j4O16ISv8zBBhJoi4bXOYNTkFLOqSL3UDB0njXxCXNezjeyVrJyGOWtgfs/q2km1gwBcfH8q1yEGoMYunA==}
+    engines: {node: '>=18'}
 
   core-js-pure@3.39.0:
     resolution: {integrity: sha512-7fEcWwKI4rJinnK+wLTezeg2smbFFdSBP6E2kQZNbnzM2s1rpKQ6aaRteZSSg7FLU3P0HGGVo/gbpfanU36urg==}
@@ -4553,6 +4578,8 @@ snapshots:
   cookie@0.7.1: {}
 
   cookie@0.7.2: {}
+
+  cookie@1.0.2: {}
 
   core-js-pure@3.39.0: {}
 
