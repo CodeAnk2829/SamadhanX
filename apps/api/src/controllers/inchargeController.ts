@@ -1,9 +1,11 @@
 import { prisma } from "@repo/db/client";
 import { DelegateSchema } from "@repo/types/inchargeTypes";
-import { ESCALATED, RedisManager } from "../util/RedisManager";
+import { RedisManager } from "../util/RedisManager";
+import { DELEGATED, ESCALATED } from "@repo/types/wsMessageTypes";
 
 export const delegateComplaint = async (req: any, res: any) => {
     try {
+        const redisClient = RedisManager.getInstance();
         const body = req.body // { complaintId: string, resolverId: string }
         const parseData = DelegateSchema.safeParse(body);
         const currentInchargeId = req.user.id;
@@ -85,9 +87,10 @@ export const delegateComplaint = async (req: any, res: any) => {
                     delegateTo: resolverId,
                     delegatedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
                 },
-                select: {
+                include: {
                     user: {
                         select: {
+                            id: true,
                             name: true,
                             email: true,
                             phoneNumber: true,
@@ -120,6 +123,21 @@ export const delegateComplaint = async (req: any, res: any) => {
         if (!delegate) {
             throw new Error("Delegation failed.");
         }
+
+        await redisClient.publishMessage("delegation", {
+            type: DELEGATED,
+            data: {
+                complaintId,
+                complainerId: complaintDetails.userId,
+                access: delegate[1].access,
+                title: delegate[1].title,
+                isAssignedTo: currentInchargeId,
+                delegatedTo: delegate[0].delegateTo as string,
+                resolverName: delegate[0].user?.name as string,
+                occupation: delegate[0].user?.resolver?.occupation?.occupationName as string,
+                delegatedAt: delegate[0].delegatedAt as Date
+            }
+        });
 
         const resolverDetails = {
             name: delegate[0].user?.name,
@@ -308,6 +326,8 @@ export const escalateComplaint = async (req: any, res: any) => {
             type: ESCALATED,
             data: {
                 complaintId: escalateComplaint.id,
+                complainerId: complaintDetails.userId,
+                access: escalateComplaint.access,
                 title: escalateComplaint.title,
                 wasAssignedTo: currentIncharge.id,
                 isAssignedTo: escalateComplaint.complaintAssignment?.user?.id as string,

@@ -1,6 +1,7 @@
 import { prisma } from "@repo/db/client";
 import { CreateComplaintSchema, UpdateComplaintSchema } from "@repo/types/complaintTypes";
-import { RedisManager, CREATED, UPDATED, UPVOTED, DELETED } from "../util/RedisManager";
+import { CREATED, UPDATED, UPVOTED, DELETED } from "@repo/types/wsMessageTypes";
+import { RedisManager } from "../util/RedisManager";
 
 export const createComplaintOutbox = async (req: any, res: any) => {
     try {
@@ -199,6 +200,8 @@ export const createComplaint = async (req: any, res: any) => {
             type: CREATED,
             data: {
                 complaintId: complaintResponse.id,
+                complainerId: complaintResponse.userId,
+                access: complaintResponse.access,
                 title: complaintResponse.title,
                 isAssignedTo: complaintResponse.complaintAssignment?.user?.id as string
             }
@@ -262,6 +265,8 @@ export const deletedComplaintById = async (req: any, res: any) => {
             select: { 
                 id: true,
                 title: true, 
+                access: true,
+                userId: true,
                 complaintAssignment: {
                     select: {
                         user: {
@@ -283,11 +288,13 @@ export const deletedComplaintById = async (req: any, res: any) => {
             type: DELETED,
             data: {
                 complaintId,
+                complainerId: deletedComplaint.userId,
+                access: deletedComplaint.access,
                 title: deletedComplaint.title,
                 wasAssignedTo: deletedComplaint.complaintAssignment?.user?.id as string
             }
         });
-        
+
         res.status(200).json({
             ok: true,
             message: "Complaint deleted successfully.",
@@ -465,7 +472,7 @@ export const getComplaintById = async (req: any, res: any) => {
             if(!assignedComplaint) {
                 throw new Error("Unauthorized. You are not assigned to this complaint");
             }
-        }
+        } 
 
         const complaint = await prisma.complaint.findUnique({
             where: {
@@ -526,6 +533,10 @@ export const getComplaintById = async (req: any, res: any) => {
 
         if (!complaint) {
             throw new Error("Could not fetch the required complaint");
+        }
+
+        if (complaint.access === "PRIVATE" && userId !== complaint.userId) {
+            throw new Error("No 'Public' complaint found with the given complaint ID");
         }
 
         const upvote = await prisma.upvote.findFirst({
@@ -873,6 +884,7 @@ export const updateComplaintById = async (req: any, res: any) => {
             type: UPDATED,
             data: {
                 complaintId: complaintResponse.id,
+                complainerId: complaintResponse.userId,
                 title: complaintResponse.title,
                 description: complaintResponse.description,
                 access: complaintResponse.access,
@@ -935,7 +947,15 @@ export const upvoteComplaint = async (req: any, res: any) => {
         // first check an user has already upvoted
         const hasUpvoted = await prisma.upvote.findFirst({
             where: { userId, complaintId },
-            select: { id: true }
+            select: { 
+                id: true,
+                complaint: {
+                    select: {
+                        access: true,
+                        userId: true,
+                    }
+                }
+            }
         });
 
         let finalAction: any;
@@ -973,6 +993,8 @@ export const upvoteComplaint = async (req: any, res: any) => {
             },
             select: {
                 title: true,
+                userId: true,
+                access: true,
                 totalUpvotes: true,
                 complaintAssignment: {
                     select: {
@@ -995,6 +1017,8 @@ export const upvoteComplaint = async (req: any, res: any) => {
             type: UPVOTED,
             data: {
                 complaintId,
+                complainerId: upvotes.userId,
+                access: upvotes.access,
                 title: upvotes.title,
                 upvotes: upvotes.totalUpvotes,
                 hasUpvoted: hasUpvoted ? false : true,

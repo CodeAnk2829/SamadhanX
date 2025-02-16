@@ -263,6 +263,9 @@ importers:
 
   packages/ws2:
     dependencies:
+      '@repo/types':
+        specifier: workspace:*
+        version: link:../types
       '@types/redis':
         specifier: ^4.0.11
         version: 4.0.11

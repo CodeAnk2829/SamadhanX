@@ -6,7 +6,6 @@ wss.on("connection", (ws) => {
     console.log("connected to ws server");
 
     ws.on('message', (message: string) => {
-        console.log('received: %s', message);
         const userId = JSON.parse(message).userId;
         const role = JSON.parse(message).role;
         
