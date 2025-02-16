@@ -7,6 +7,7 @@
     "./adminTypes": "./src/admin.ts",
     "./complaintTypes": "./src/complaint.ts",
     "./inchargeTypes": "./src/incharge.ts",
+    "./wsMessageTypes": "./src/wsMessage.ts",
     "./userTypes": "./src/user.ts"
   },
   "scripts": {

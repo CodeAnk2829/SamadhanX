@@ -24,17 +24,13 @@ export class SubscriptionManager {
             userId,
             role
         }
-        console.log("Subscribing in SubscriptionManager");
-        console.log("subscription: " + subscription);
+        
         if (this.subscriptions.get(userId)?.includes(subscription)) {
             return
         }
 
         this.subscriptions.set(userId, (this.subscriptions.get(userId) || []).concat(subscription));
         this.reverseSubscriptions.set(subscription, (this.reverseSubscriptions.get(subscription) || []).concat(user));
-        this.reverseSubscriptions.forEach((value, key) => {
-            console.log(key, value);
-        });
 
         if (this.reverseSubscriptions.get(subscription)?.length === 1) {
 
@@ -44,27 +40,27 @@ export class SubscriptionManager {
 
     private redisCallbackHandler = (message: string, channel: string) => {
         const parsedMessage = JSON.parse(message);
-        console.log("Received message from redis");
-        console.log(parsedMessage);
 
         // find all the users who are INCHARGE or OTHERS
         // All the clients from OTHERS role will get the messages while only that incharge will
         // get the message who is responsible for that complaint
+
+        const admin = this.reverseSubscriptions.get(channel)?.filter(user => user.role === "ADMIN");
         const incharges = this.reverseSubscriptions.get(channel)?.filter(user => user.role === "INCHARGE");
         const users = this.reverseSubscriptions.get(channel)?.filter(user => user.role === "USER");
 
-        console.log("Valid Incharges");
         const validIncharges = incharges?.filter(incharge => incharge.userId === parsedMessage.data.isAssignedTo || incharge.userId === parsedMessage.data.wasAssignedTo);
-        console.log(validIncharges);
 
-        console.log("Users");
-        users?.forEach(user => {
-            console.log(user);
-        });
+        admin?.forEach(user => UserManager.getInstance().getUser(user.userId)?.emit(parsedMessage));
 
-        users?.forEach(user => UserManager.getInstance().getUser(user.userId)?.emit(parsedMessage));
+        // only PUBLIC messages will be sent to all the users except the creator of the complaint itself
+        if(parsedMessage.data.access === "PUBLIC") { 
+            users?.forEach(user => UserManager.getInstance().getUser(user.userId)?.emit(parsedMessage));
+        } else if (parsedMessage.data.access === "PRIVATE") {
+            users?.filter(user => user.userId === parsedMessage.data.complainerId)?.forEach(user => UserManager.getInstance().getUser(user.userId)?.emit(parsedMessage));
+        }
+
         validIncharges?.forEach(incharge => UserManager.getInstance().getUser(incharge.userId)?.emit(parsedMessage));
-        // this.reverseSubscriptions.get(channel)?.forEach(user => UserManager.getInstance().getUser(user.userId)?.emit(parsedMessage));
     }
 
     public unsubscribe(userId: string, subscription: string) {
@@ -80,10 +76,6 @@ export class SubscriptionManager {
                 this.reverseSubscriptions.delete(subscription);
                 this.redisClient.unsubscribe(subscription);
             }
-            console.log("Reverse Subscriptions");
-            this.reverseSubscriptions.forEach((value, key) => {
-                console.log(key, value);
-            });
         }
     }
 

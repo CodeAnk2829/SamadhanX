@@ -1,7 +1,7 @@
 import { WebSocket } from "ws";
-import { OutgoingMessage } from "./types/out";
 import { SubscriptionManager } from "./SubscriptionManager";
 import { IncomingMessage, SUBSCRIBE, UNSUBSCRIBE } from "./types/in";
+import { WsMessage } from "@repo/types/wsMessageTypes";
 
 export class User {
     private id: string;
@@ -27,12 +27,11 @@ export class User {
         this.subscriptions = this.subscriptions.filter(s => s !== subscription);
     }
 
-    emit(message: OutgoingMessage) {
+    emit(message: WsMessage) {
         this.ws.send(JSON.stringify(message));
     }
 
     private addListeners() {
-        console.log("Subscribing in User");
         const parsedMessage: IncomingMessage = JSON.parse(this.message);
         if (parsedMessage.method === SUBSCRIBE) {
             parsedMessage.params.forEach(s => SubscriptionManager.getInstance().subscribe(this.id, this.role, s));
