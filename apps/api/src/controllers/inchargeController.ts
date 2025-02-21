@@ -2,6 +2,7 @@ import { prisma } from "@repo/db/client";
 import { DelegateSchema } from "@repo/types/inchargeTypes";
 import { RedisManager } from "../util/RedisManager";
 import { DELEGATED, ESCALATED } from "@repo/types/wsMessageTypes";
+import { complaintRouter } from "../routes/complaint";
 
 export const delegateComplaint = async (req: any, res: any) => {
     try {
@@ -77,9 +78,10 @@ export const delegateComplaint = async (req: any, res: any) => {
             throw new Error("This complaint is already resolved or closed.");
         }
         
-        const delegate = await prisma.$transaction([
+        console.log("delegation started");
+        const delegate = await prisma.$transaction(async (tx) => {
             // Update complaint delegation
-            prisma.complaintDelegation.update({
+            const complaintDelegation = await tx.complaintDelegation.update({
                 where: {
                     complaintId
                 },
@@ -88,6 +90,11 @@ export const delegateComplaint = async (req: any, res: any) => {
                     delegatedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
                 },
                 include: {
+                    complaint: {
+                        select: {
+                            status: true
+                        }
+                    },
                     user: {
                         select: {
                             id: true,
@@ -106,10 +113,14 @@ export const delegateComplaint = async (req: any, res: any) => {
                         }
                     }
                 }
-            }),
+            });
+
+            if (!complaintDelegation) {
+                throw new Error("Could not delegate a complaint");
+            }
 
             // Update complaint status
-            prisma.complaint.update({
+            const updateComplaintAsDelegated = await tx.complaint.update({
                 where: {
                     id: complaintId
                 },
@@ -117,34 +128,69 @@ export const delegateComplaint = async (req: any, res: any) => {
                     status: "DELEGATED",
                     actionTaken: true
                 }
-            }),
-        ]);
+            })
+
+            if (!updateComplaintAsDelegated) {
+                throw new Error("Could not update complaint status as delegated.");
+            }
+
+            const outboxDetails = await tx.complaintOutbox.create({
+                data: {
+                    eventType: "complaint_delegated",
+                    payload: {
+                        complaintId,
+                        complainerId: complaintDetails.userId,
+                        access: updateComplaintAsDelegated.access,
+                        title: updateComplaintAsDelegated.title,
+                        isAssignedTo: currentInchargeId,
+                        delegatedTo: complaintDelegation.delegateTo,
+                        resolverName: complaintDelegation.user?.name,
+                        occupation: complaintDelegation.user?.resolver?.occupation?.occupationName,
+                        delegatedAt: complaintDelegation.delegatedAt
+                    },
+                    status: "PENDING",
+                    processAfter: new Date(Date.now())
+                }
+            });
+
+            if (!outboxDetails) {
+                throw new Error("Could not create complaint_delegated event in outbox.");
+            }
+
+            const markEscalationDueAsProcessed = await tx.complaintOutbox.updateMany({
+                where: {
+                    AND: [
+                        { eventType: "complaint_escalation_due" },
+                        {
+                            payload: {
+                                path: ['complaintId'],
+                                equals: complaintId
+                            }
+                        }
+                    ]
+                },
+                data: {
+                    status: "PROCESSED"
+                }
+            });
+
+            if (!markEscalationDueAsProcessed) {
+                throw new Error("Could not mark complaint escalation due as processed");
+            }
+
+            return complaintDelegation;
+        });
 
         if (!delegate) {
             throw new Error("Delegation failed.");
         }
 
-        await redisClient.publishMessage("delegation", {
-            type: DELEGATED,
-            data: {
-                complaintId,
-                complainerId: complaintDetails.userId,
-                access: delegate[1].access,
-                title: delegate[1].title,
-                isAssignedTo: currentInchargeId,
-                delegatedTo: delegate[0].delegateTo as string,
-                resolverName: delegate[0].user?.name as string,
-                occupation: delegate[0].user?.resolver?.occupation?.occupationName as string,
-                delegatedAt: delegate[0].delegatedAt as Date
-            }
-        });
-
         const resolverDetails = {
-            name: delegate[0].user?.name,
-            email: delegate[0].user?.email,
-            phoneNumber: delegate[0].user?.phoneNumber,
-            occupation: delegate[0].user?.resolver?.occupation?.occupationName,
-            status: delegate[1].status,
+            name: delegate.user?.name,
+            email: delegate.user?.email,
+            phoneNumber: delegate.user?.phoneNumber,
+            occupation: delegate.user?.resolver?.occupation?.occupationName,
+            status: "DELEGATED",
         }
 
         res.status(200).json({
@@ -163,7 +209,6 @@ export const delegateComplaint = async (req: any, res: any) => {
 
 export const escalateComplaint = async (req: any, res: any) => {
     try {
-        const redisClient = RedisManager.getInstance();
         const { complaintId } = req.body; // { complaintId: string }
         const currentIncharge = req.user;
 
@@ -249,104 +294,153 @@ export const escalateComplaint = async (req: any, res: any) => {
             throw new Error("Could not find the next incharge.");
         }
 
-        // update the complaint with the next incharge
-        const escalateComplaint = await prisma.complaint.update({
-            where: { id: complaintId },
-            data: {
-                complaintAssignment: {
-                    update: {
-                        assignedTo: nextIncharge.incharge.id,
-                        assignedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
-                    }
+        const escalatedComplaint = await prisma.$transaction(async (tx) => {
+            // update the complaint with next incharge
+            const complaintEscalation = await tx.complaint.update({
+                where: {
+                    id: complaintId
                 },
-                expiredAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString() // 2 mins after current time
-            },
-            include: {
-                attachments: {
-                    select: {
-                        id: true,
-                        imageUrl: true
-                    }
+                data: {
+                    complaintAssignment: {
+                        update: {
+                            assignedTo: nextIncharge.incharge.id,
+                            assignedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                        }
+                    },
+                    expiredAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString() // 2 mins after current time
                 },
-                tags: {
-                    select: {
-                        tags: {
-                            select: {
-                                tagName: true
+                include: {
+                    attachments: {
+                        select: {
+                            id: true,
+                            imageUrl: true
+                        }
+                    },
+                    tags: {
+                        select: {
+                            tags: {
+                                select: {
+                                    tagName: true
+                                }
                             }
                         }
-                    }
-                },
-                user: {
-                    select: {
-                        id: true,
-                        name: true,
-                    }
-                },
-                complaintAssignment: {
-                    select: {
-                        assignedAt: true,
-                        user: {
-                            select: {
-                                id: true,
-                                name: true,
-                                phoneNumber: true,
-                                issueIncharge: {
-                                    select: {
-                                        designation: {
-                                            select: {
-                                                designation: {
-                                                    select: {
-                                                        designationName: true,
-                                                    }
-                                                },
-                                                rank: true,
-                                            }
-                                        },
-                                        location: {
-                                            select: {
-                                                locationName: true,
+                    },
+                    user: {
+                        select: {
+                            id: true,
+                            name: true,
+                        }
+                    },
+                    complaintAssignment: {
+                        select: {
+                            assignedAt: true,
+                            user: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    phoneNumber: true,
+                                    issueIncharge: {
+                                        select: {
+                                            designation: {
+                                                select: {
+                                                    designation: {
+                                                        select: {
+                                                            designationName: true,
+                                                        }
+                                                    },
+                                                    rank: true,
+                                                }
+                                            },
+                                            location: {
+                                                select: {
+                                                    locationName: true,
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
-                },
+                    },
+                }
+            });
+
+            if (!complaintEscalation) {
+                throw new Error("Could not escalate a complaint");
             }
+
+            const markEscalationDueAsProcessed = await tx.complaintOutbox.updateMany({
+                where: {
+                    AND: [
+                        { eventType: "complaint_escalation_due" },
+                        {
+                            payload: {
+                                path: ['complaintId'],
+                                equals: complaintEscalation.id
+                            }
+                        }
+                    ]
+                },
+                data: {
+                    status: "PROCESSED"
+                }
+            });
+
+            if (!markEscalationDueAsProcessed) {
+                throw new Error("Could not mark escalation due as processed while manually escalating the complaint.");
+            }
+
+            const storeComplaintToPublishEscalation = await tx.complaintOutbox.createMany({
+                data: [{
+                    eventType: "complaint_escalated",
+                    payload: {
+                        complaintId: complaintEscalation.id,
+                        complainerId: complaintEscalation.userId,
+                        access: complaintEscalation.access,
+                        title: complaintEscalation.title,
+                        wasAssignedTo: currentIncharge.id,
+                        isAssignedTo: complaintEscalation.complaintAssignment?.user?.id,
+                        inchargeName: complaintEscalation.complaintAssignment?.user?.name,
+                        designation: complaintEscalation.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
+                    },
+                    status: "PENDING",
+                    processAfter: new Date(Date.now())
+                }, {
+                    eventType: "complaint_escalation_due",
+                    payload: {
+                        complaintId: complaintEscalation.id,
+                        title: complaintEscalation.title,
+                        inchargeId: complaintEscalation.complaintAssignment?.user?.id,
+                        locationId: locationId,
+                        rank: nextIncharge.designation.rank, // rank of currently escalated incharge
+                    },
+                    status: "PENDING",
+                    processAfter: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000))
+                }]
+            });
+
+            if (!storeComplaintToPublishEscalation) {
+                throw new Error("Store escalated complaint details in outbox failed.");
+            }
+
+            return complaintEscalation;
         });
 
-        if (!escalateComplaint) {
-            throw new Error("Escalation failed.");
+        if (!escalatedComplaint) {
+            throw new Error("Escalation failed. Please try again");
         }
 
-        // publish this event on 'creation' channel
-        await redisClient.publishMessage("escalation", {
-            type: ESCALATED,
-            data: {
-                complaintId: escalateComplaint.id,
-                complainerId: complaintDetails.userId,
-                access: escalateComplaint.access,
-                title: escalateComplaint.title,
-                wasAssignedTo: currentIncharge.id,
-                isAssignedTo: escalateComplaint.complaintAssignment?.user?.id as string,
-                inchargeName: escalateComplaint.complaintAssignment?.user?.name as string,
-                designation: escalateComplaint.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName as string,
-            }
-        });
-
         const escalationDetails = {
-            complaintId: escalateComplaint.id,
-            title: escalateComplaint.title,
-            status: escalateComplaint.status,
-            createdAt: escalateComplaint.createdAt,
-            assignedAt: escalateComplaint.complaintAssignment?.assignedAt,
-            expiredAt: escalateComplaint.expiredAt,
-            assignedTo: escalateComplaint.complaintAssignment?.user?.name,
-            designation: escalateComplaint.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
-            rank: escalateComplaint.complaintAssignment?.user?.issueIncharge?.designation.rank,
-            location: escalateComplaint.complaintAssignment?.user?.issueIncharge?.location.locationName,
+            complaintId: escalatedComplaint.id,
+            title: escalatedComplaint.title,
+            status: escalatedComplaint.status,
+            createdAt: escalatedComplaint.createdAt,
+            assignedAt: escalatedComplaint.complaintAssignment?.assignedAt,
+            expiredAt: escalatedComplaint.expiredAt,
+            assignedTo: escalatedComplaint.complaintAssignment?.user?.name,
+            designation: escalatedComplaint.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
+            rank: escalatedComplaint.complaintAssignment?.user?.issueIncharge?.designation.rank,
+            location: escalatedComplaint.complaintAssignment?.user?.issueIncharge?.location.locationName,
         }
 
         res.status(200).json({
@@ -477,6 +571,8 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
                             select: {
                                 id: true,
                                 name: true,
+                                email: true,
+                                phoneNumber: true,
                                 issueIncharge: {
                                     select: {
                                         designation: {
@@ -516,12 +612,12 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
             throw new Error("You are not assigned to this complaint.");
         }
 
-        if (complaintDetails.complaintResolution?.resolvedBy) {
-            throw new Error("")
+        if (complaintDetails.status === "RESOLVED") {
+            throw new Error("Complaint already resolved.");
         }
 
-        const resolvedComplaint = await prisma.$transaction([
-            prisma.complaintResolution.update({
+        const resolvedComplaint = await prisma.$transaction(async (tx) => {
+            const complaintResolution = await tx.complaintResolution.update({
                 where: {
                     complaintId
                 },
@@ -532,7 +628,8 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
                 select: {
                     complaint: {
                         select: {
-                            id: true,
+                            status: true,
+                            userId: true,
                         }
                     },
                     user: {
@@ -545,9 +642,13 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
                     },
                     resolvedAt: true,
                 }
-            }),
-            
-            prisma.complaint.update({
+            });
+
+            if (!complaintResolution) {
+                throw new Error("Could not resolve the complaint.");
+            }
+
+            const markAsResolved = await tx.complaint.update({
                 where: {
                     id: complaintId
                 },
@@ -555,24 +656,68 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
                     status: "RESOLVED",
                     actionTaken: true
                 }
-            }),
+            });
 
-            prisma.complaintOutbox.delete({
-                where: {
-                    complaintId
+            if (!markAsResolved) {
+                throw new Error("Could not mark the complaint as resolved");
+            }
+
+            const outboxDetails = await tx.complaintOutbox.create({
+                data: {
+                    eventType: "complaint_resolved",
+                    payload: {
+                        complaintId,
+                        complainerId: complaintResolution.complaint.userId,
+                        access: complaintDetails.access,
+                        title: complaintDetails.title,
+                        inchargeId: complaintDetails.complaintAssignment?.user?.id,
+                        inchargeName: complaintDetails.complaintAssignment?.user?.name,
+                        resolverDetails: complaintResolution.user,
+                        resolvedAt: complaintResolution.resolvedAt,
+                    },
+                    status: "PENDING",
+                    processAfter: new Date(Date.now())
                 }
-            })
-        ]);
+            });
+
+            if (!outboxDetails) {
+                throw new Error("Could not create complaint_resolved outbox details");
+            }
+
+            const markEscalationDueAsProcessed = await tx.complaintOutbox.updateMany({
+                where: {
+                    AND: [
+                        { eventType: "complaint_escalation_due" },
+                        {
+                            payload: {
+                                path: ['complaintId'],
+                                equals: complaintId
+                            }
+                        }
+                    ]
+                },
+                data: {
+                    status: "PROCESSED"
+                }
+            });
+
+            if (!markEscalationDueAsProcessed) {
+                throw new Error("Could not mark complaint escalation due as processed");
+            }
+
+
+            return complaintResolution;
+        });
 
         if (!resolvedComplaint) {
             throw new Error("Could not resolve complaint");
         }
 
         const complaintResolutionDetails = {
-            complaintId: resolvedComplaint[0].complaint.id,
-            status: resolvedComplaint[1].status,
-            resolvedBy: resolvedComplaint[0].user,
-            resolvedAt: resolvedComplaint[0].resolvedAt
+            complaintId,
+            status: resolvedComplaint.complaint.status,
+            resolvedBy: resolvedComplaint.user,
+            resolvedAt: resolvedComplaint.resolvedAt
         }
 
         res.status(200).json({

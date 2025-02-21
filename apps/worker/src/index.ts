@@ -51,116 +51,131 @@ async function startWorker() {
 
             if (!nextIncharge) {
                 console.log("No issue incharge found");
-                // remove the complaint from complaintOutbox table
-                const deletedComplaint = await prisma.complaintOutbox.deleteMany({
-                    where: {
-                        complaintId: jsonData.complaintId
-                    }
-                });
-
-                if (deletedComplaint) {
-                    // remove the complaint from the queue as we reached to highest rank
-                    await consumer.lRem("worker-queue", -1, result as string);
-                } else {
-                    console.log("deletion of a complaint from complaintOutbox table by worker unsuccessful");
-                }
-
+                await consumer.lRem("worker-queue", -1, result as string);
                 await new Promise((resolve) => setTimeout(resolve, 5000));
                 continue;
             }
 
-            // update the complaint with next incharge
-            const escalateComplaint = await prisma.complaint.update({
-                where: {
-                    id: jsonData.complaintId
-                },
-                data: {
-                    complaintAssignment: {
-                        update: {
-                            assignedTo: nextIncharge.incharge.id,
-                            assignedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
-                        }
+            const escalateComplaint = await prisma.$transaction(async (tx) => {
+                // update the complaint with next incharge
+                const escalatedComplaint = await tx.complaint.update({
+                    where: {
+                        id: jsonData.complaintId
                     },
-                    expiredAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString() // 2 mins after current time
-                },
-                include: {
-                    attachments: {
-                        select: {
-                            id: true,
-                            imageUrl: true
-                        }
+                    data: {
+                        complaintAssignment: {
+                            update: {
+                                assignedTo: nextIncharge.incharge.id,
+                                assignedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                            }
+                        },
+                        expiredAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString() // 2 mins after current time
                     },
-                    tags: {
-                        select: {
-                            tags: {
-                                select: {
-                                    tagName: true
+                    include: {
+                        attachments: {
+                            select: {
+                                id: true,
+                                imageUrl: true
+                            }
+                        },
+                        tags: {
+                            select: {
+                                tags: {
+                                    select: {
+                                        tagName: true
+                                    }
                                 }
                             }
-                        }
-                    },
-                    user: {
-                        select: {
-                            id: true,
-                            name: true,
-                        }
-                    },
-                    complaintAssignment: {
-                        select: {
-                            assignedAt: true,
-                            user: {
-                                select: {
-                                    id: true,
-                                    name: true,
-                                    phoneNumber: true,
-                                    issueIncharge: {
-                                        select: {
-                                            designation: {
-                                                select: {
-                                                    designation: {
-                                                        select: {
-                                                            designationName: true,
-                                                        }
-                                                    },
-                                                    rank: true,
-                                                }
-                                            },
-                                            location: {
-                                                select: {
-                                                    locationName: true,
+                        },
+                        user: {
+                            select: {
+                                id: true,
+                                name: true,
+                            }
+                        },
+                        complaintAssignment: {
+                            select: {
+                                assignedAt: true,
+                                user: {
+                                    select: {
+                                        id: true,
+                                        name: true,
+                                        phoneNumber: true,
+                                        issueIncharge: {
+                                            select: {
+                                                designation: {
+                                                    select: {
+                                                        designation: {
+                                                            select: {
+                                                                designationName: true,
+                                                            }
+                                                        },
+                                                        rank: true,
+                                                    }
+                                                },
+                                                location: {
+                                                    select: {
+                                                        locationName: true,
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
                             }
-                        }
-                    },
+                        },
+                    }
+                });
+    
+                if (!escalatedComplaint) {
+                    // retry
+                    console.log("escalation failed");
                 }
+
+                const storeComplaintToPublishEscalation = await tx.complaintOutbox.createMany({
+                    data: [{
+                        eventType: "complaint_escalated",
+                        payload: {
+                            complaintId: escalatedComplaint.id,
+                            complainerId: escalatedComplaint.userId,
+                            access: escalatedComplaint.access,
+                            title: escalatedComplaint.title,
+                            wasAssignedTo: jsonData.inchargeId,
+                            isAssignedTo: escalatedComplaint.complaintAssignment?.user?.id,
+                            inchargeName: escalatedComplaint.complaintAssignment?.user?.name,
+                            designation: escalatedComplaint.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
+                        },
+                        status: "PENDING",
+                        processAfter: new Date(Date.now())
+                    }, {
+                        eventType: "complaint_escalation_due",
+                        payload: {
+                            complaintId: escalatedComplaint.id,
+                            title: escalatedComplaint.title,
+                            inchargeId: escalatedComplaint.complaintAssignment?.user?.id,
+                            locationId: jsonData.locationId,
+                            rank: nextIncharge.designation.rank,
+                        },
+                        status: "PENDING",
+                        processAfter: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000))
+                    }]
+                });
+
+                if (!storeComplaintToPublishEscalation) {
+                    console.log("Store escalated complaint details in outbox failed.");
+                }
+
+                return escalatedComplaint;
             });
 
             if (!escalateComplaint) {
-                // retry
-                console.log("Escalation failed");
+                console.log("Escalation failed.");
                 await new Promise((resolve) => setTimeout(resolve, 5000));
                 continue;
             }
 
             console.log("Escalation successful");
             console.log(escalateComplaint);
-
-            // publish this event on 'creation' channel
-            await consumer.publish("escalation", JSON.stringify({
-                type: "ESCALATED",
-                data: {
-                    complaintId: escalateComplaint.id,
-                    title: escalateComplaint.title,
-                    wasAssignedTo: jsonData.inchargeId,
-                    isAssignedTo: escalateComplaint.complaintAssignment?.user?.id as string,
-                    inchargeName: escalateComplaint.complaintAssignment?.user?.name as string,
-                    designation: escalateComplaint.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName as string,
-                }
-            }));
 
             await consumer.lRem("worker-queue", -1, result as string);
             await new Promise((resolve) => setTimeout(resolve, 5000));

@@ -47,7 +47,6 @@ model Complaint {
   updatedAt           DateTime             @updatedAt
   userId              String
   user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  complaintOutbox     ComplaintOutbox?
   complaintAssignment ComplaintAssignment?
   complaintDelegation ComplaintDelegation?
   complaintResolution ComplaintResolution?
@@ -59,9 +58,12 @@ model Complaint {
 }
 
 model ComplaintOutbox {
-  id          String    @id @default(uuid())
-  complaintId String    @unique
-  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  id           String        @id @default(uuid())
+  eventType    String
+  payload      Json
+  status       ProcessStatus
+  processAfter DateTime
+  retryCount   Int           @default(0)
 }
 
 model Tag {
@@ -208,6 +210,20 @@ model Upvote {
   complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
 
   @@unique([userId, complaintId])
+}
+
+model ProcessedEvent {
+  id          String   @id @default(uuid())
+  eventId     String   @unique
+  processedAt DateTime
+}
+
+enum ProcessStatus {
+  CANCELLED
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
 }
 
 enum Role {
