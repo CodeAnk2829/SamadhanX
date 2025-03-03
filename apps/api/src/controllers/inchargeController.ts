@@ -3,6 +3,7 @@ import { DelegateSchema } from "@repo/types/inchargeTypes";
 import { RedisManager } from "../util/RedisManager";
 import { DELEGATED, ESCALATED } from "@repo/types/wsMessageTypes";
 import { complaintRouter } from "../routes/complaint";
+import { sendSMS } from "@repo/twilio/sendSms";
 
 export const delegateComplaint = async (req: any, res: any) => {
     try {
@@ -79,7 +80,7 @@ export const delegateComplaint = async (req: any, res: any) => {
         }
         
         console.log("delegation started");
-        const delegate = await prisma.$transaction(async (tx) => {
+        const delegate = await prisma.$transaction(async (tx: any) => {
             // Update complaint delegation
             const complaintDelegation = await tx.complaintDelegation.update({
                 where: {
@@ -294,7 +295,7 @@ export const escalateComplaint = async (req: any, res: any) => {
             throw new Error("Could not find the next incharge.");
         }
 
-        const escalatedComplaint = await prisma.$transaction(async (tx) => {
+        const escalatedComplaint = await prisma.$transaction(async (tx: any) => {
             // update the complaint with next incharge
             const complaintEscalation = await tx.complaint.update({
                 where: {
@@ -616,7 +617,7 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
             throw new Error("Complaint already resolved.");
         }
 
-        const resolvedComplaint = await prisma.$transaction(async (tx) => {
+        const resolvedComplaint = await prisma.$transaction(async (tx: any) => {
             const complaintResolution = await tx.complaintResolution.update({
                 where: {
                     complaintId
@@ -729,6 +730,24 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
         res.status(400).json({
             ok: false,
             error: err instanceof Error ? err.message : "An error occurred while marking the complaint as resolved."
+        });
+    }
+}
+
+export const scheduleNotification = async (req: any, res: any) => {
+    try {
+        console.log("we reached here");
+        const result = await sendSMS(["+919341211274"], "Hello, this is a test message from the complaint management system.");
+        console.log(result);
+        res.status(200).json({
+            ok: true,
+            message: "Notification sent successfully."
+        });
+        
+    } catch (err) {
+        res.status(400).json({
+            ok: false,
+            error: err instanceof Error ? err.message : "An error occurred while sending out notification."
         });
     }
 }

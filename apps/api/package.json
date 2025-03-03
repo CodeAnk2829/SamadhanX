@@ -9,6 +9,7 @@
     "dev": "node dist/index.js"
   },
   "dependencies": {
+    "@repo/twilio": "workspace:*",
     "@repo/redis": "workspace:*",
     "@repo/db": "workspace:*",
     "@repo/types": "workspace:*",

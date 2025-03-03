@@ -45,7 +45,7 @@ export const createComplaint = async (req: any, res: any) => {
 
         const currentDateTime = Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000);
 
-        const createComplaint = await prisma.$transaction(async (tx) => {
+        const createComplaint = await prisma.$transaction(async (tx: any) => {
             const complaintDetails = await tx.complaint.create({
                 data: {
                     title: parseData.data.title,
@@ -171,8 +171,8 @@ export const createComplaint = async (req: any, res: any) => {
             throw new Error("Could not create complaint. Please try again");
         }
 
-        const tagNames = createComplaint.tags.map(tag => tag.tags.tagName);
-        const attachments = createComplaint.attachments.map(attachment => attachment.imageUrl);
+        const tagNames = createComplaint.tags.map((tag: any) => tag.tags.tagName);
+        const attachments = createComplaint.attachments.map((attachment: any) => attachment.imageUrl);
 
         let complaintResponse = createComplaint;
 
@@ -239,8 +239,8 @@ export const deletedComplaintById = async (req: any, res: any) => {
             throw new Error("Access Denied. You do not have permissions to make changes.")
         }
 
-        const deletedComplaint = await prisma.$transaction(async (tx) => {
-            const complaintDeletion = await prisma.complaint.delete({
+        const deletedComplaint = await prisma.$transaction(async (tx: any) => {
+            const complaintDeletion = await tx.complaint.delete({
                 where: { id: complaintId },
                 select: { 
                     id: true,
@@ -263,7 +263,7 @@ export const deletedComplaintById = async (req: any, res: any) => {
                 throw new Error("Deletion request failed.");
             }
 
-            const outboxDetails = await prisma.complaintOutbox.create({
+            const outboxDetails = await tx.complaintOutbox.create({
                 data: {
                     eventType: "complaint_deleted",
                     payload: {
@@ -784,7 +784,7 @@ export const updateComplaintById = async (req: any, res: any) => {
             updatedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
         }
 
-        const updateDetails = await prisma.$transaction(async (tx) => {
+        const updateDetails = await prisma.$transaction(async (tx: any) => {
             const updateComplaint = await tx.complaint.update({
                 where: { id: complaintId },
                 data: dataToUpdate,
@@ -889,8 +889,8 @@ export const updateComplaintById = async (req: any, res: any) => {
             hasUpvoted = true;
         }
 
-        const tagNames = updateDetails.tags.map(tag => tag.tags.tagName);
-        const attachments = updateDetails.attachments.map(attachment => attachment.imageUrl);
+        const tagNames = updateDetails.tags.map((tag: any) => tag.tags.tagName);
+        const attachments = updateDetails.attachments.map((attachment: any) => attachment.imageUrl);
 
         let complaintResponse = updateDetails;
 
@@ -992,7 +992,7 @@ export const upvoteComplaint = async (req: any, res: any) => {
             finalAction = { decrement: 1 };
         }
 
-        const upvotes = await prisma.$transaction(async (tx) => {
+        const upvotes = await prisma.$transaction(async (tx: any) => {
             // count total upvotes for a complaint
             const upvoteComplaint = await tx.complaint.update({
                 where: { id: complaintId },

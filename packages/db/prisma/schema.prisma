@@ -24,6 +24,7 @@ model User {
   complaints          Complaint[]
   complaintAssignment ComplaintAssignment[]
   complaintDelegation ComplaintDelegation[]
+  complaintHistory    ComplaintHistory[]
   complaintResolution ComplaintResolution[]
   issueIncharge       IssueIncharge?
   resolver            Resolver?
@@ -49,6 +50,7 @@ model Complaint {
   user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   complaintAssignment ComplaintAssignment?
   complaintDelegation ComplaintDelegation?
+  complaintHistory    ComplaintHistory[]
   complaintResolution ComplaintResolution?
   feedbacks           Feedback[]
   notification        Notification[]
@@ -117,6 +119,16 @@ model ComplaintResolution {
   resolvedBy  String?
   user        User?     @relation(fields: [resolvedBy], references: [id], onDelete: SetNull)
   resolvedAt  DateTime?
+}
+
+model ComplaintHistory {
+  id          String    @id @default(uuid())
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  handledBy   String?
+  user        User?      @relation(fields: [handledBy], references: [id], onDelete: SetNull)
+  eventType   Status
+  happenedAt  DateTime
 }
 
 model Designation {
@@ -238,6 +250,7 @@ enum Status {
   ASSIGNED
   CLOSED
   DELEGATED
+  ESCALATED
   PENDING
   RESOLVED
   UNRESOLVED

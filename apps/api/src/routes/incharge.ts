@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authMiddleware, authorizeMiddleware } from "../middleware/auth";
-import { delegateComplaint, escalateComplaint, getActiveComplaintsAssignedToIncharge, markComplaintAsResolved } from "../controllers/inchargeController";
+import { delegateComplaint, escalateComplaint, getActiveComplaintsAssignedToIncharge, markComplaintAsResolved, scheduleNotification } from "../controllers/inchargeController";
 import { getComplaintById } from "../controllers/complaintController";
 import { getResolvers, getResolversAtALocation } from "../controllers/adminController";
 
@@ -12,7 +12,7 @@ enum Role {
 
 
 // CREATE
-
+router.post("/notify", authMiddleware, authorizeMiddleware(Role), scheduleNotification);
 // READ
 router.get("/get/active-complaints", authMiddleware, authorizeMiddleware(Role), getActiveComplaintsAssignedToIncharge)
 router.get("/get/complaint/:id", authMiddleware, authorizeMiddleware(Role), getComplaintById);
