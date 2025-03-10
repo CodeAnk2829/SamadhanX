@@ -126,8 +126,8 @@ model ComplaintHistory {
   complaintId String
   complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
   handledBy   String?
-  user        User?      @relation(fields: [handledBy], references: [id], onDelete: SetNull)
-  eventType   Status
+  user        User?     @relation(fields: [handledBy], references: [id], onDelete: SetNull)
+  eventType   String
   happenedAt  DateTime
 }
 
