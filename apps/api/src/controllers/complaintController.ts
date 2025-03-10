@@ -1,11 +1,10 @@
 import { prisma } from "@repo/db/client";
 import { CreateComplaintSchema, UpdateComplaintSchema } from "@repo/types/complaintTypes";
-import { CREATED, UPDATED, UPVOTED, DELETED } from "@repo/types/wsMessageTypes";
+import {  UPDATED, UPVOTED, DELETED } from "@repo/types/wsMessageTypes";
 import { RedisManager } from "../util/RedisManager";
 
 export const createComplaint = async (req: any, res: any) => {
     try {
-        const redisClient = RedisManager.getInstance();
         const body = req.body; // { title: string, description: string, access: string, postAsAnonymous: boolean, locationId: Int, tags: Array<Int>, attachments: Array<String> }
         const parseData = CreateComplaintSchema.safeParse(body);
 
@@ -61,6 +60,22 @@ export const createComplaint = async (req: any, res: any) => {
                     },
                     complaintDelegation: {
                         create: {}
+                    },
+                    complaintHistory: {
+                        createMany: {
+                            data: [
+                                {
+                                    eventType: "CREATED",
+                                    handledBy: req.user.id,
+                                    happenedAt: new Date(currentDateTime)
+                                },
+                                {
+                                    eventType: "ASSIGNED",
+                                    handledBy: issueIncharge.inchargeId,
+                                    happenedAt: new Date(currentDateTime)
+                                }
+                            ]
+                        }
                     },
                     complaintResolution: {
                         create: {}
@@ -221,7 +236,6 @@ export const createComplaint = async (req: any, res: any) => {
 
 export const deletedComplaintById = async (req: any, res: any) => {
     try {
-        const redisClient = RedisManager.getInstance();
         const complaintId = req.params.id;
         const currentUserId = req.user.id;
 
@@ -523,7 +537,7 @@ export const getComplaintById = async (req: any, res: any) => {
                         }
                     }
                 },
-            }
+            },
         });
 
         if (!complaint) {
@@ -590,6 +604,96 @@ export const getComplaintById = async (req: any, res: any) => {
         res.status(400).json({
             ok: false,
             error: err instanceof Error ? err.message : "An error occurred while fetching complaint"
+        });
+    }
+}
+
+export const getComplaintHistory = async (req: any, res: any) => {
+    try {
+        const complaintId = req.params.id;
+        const userId = req.user.id;
+        const userRole = req.user.role;
+
+        // check whether issue incharge is not accessing the history
+        if (userRole === "ISSUE_INCHARGE") {
+            throw new Error("Unauthorized Access.");
+        }
+
+        // check whether this complaint corresponds to the current user
+        const complaintUserDetails = await prisma.complaint.findUnique({
+            where: {
+                id: complaintId,
+            },
+            select: {
+                userId: true
+            }
+        });
+
+        if (!complaintUserDetails) {
+            throw new Error("Couldn't fetch complaint details.");
+        }
+
+        if (complaintUserDetails.userId !== userId) {
+            throw new Error("Unauthorized Access.");
+        }
+
+        // fetch the complaint history
+        const complaintHistory = await prisma.complaintHistory.findMany({
+            where: {
+                complaintId
+            },
+            include: {
+                complaint: {
+                    select: {
+                        id: true,
+                        title: true,
+                        createdAt: true,
+                        expiredAt: true,
+                        updatedAt: true,
+                    }
+                },
+                user: {
+                    select: {
+                        name: true,
+                        role: true,
+                        issueIncharge: {
+                            select: {
+                                designation: {
+                                    select: {
+                                        designation: {
+                                            select: {
+                                                designationName: true,
+                                            }
+                                        },
+                                        rank: true,
+                                    }
+                                },
+                                location: true,
+                            }
+                        },
+                        resolver: {
+                            select: {
+                                occupation: true,
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (!complaintHistory) {
+            throw new Error("Couldn't fetch complaint history");
+        }
+
+        res.status(200).json({
+            ok: true,
+            complaintHistory
+        });
+
+    } catch(err) {
+        res.status(400).json({
+            ok: false,
+            error: err instanceof Error ? err.message : "An error occurred while fetching the complaint history.",
         });
     }
 }
