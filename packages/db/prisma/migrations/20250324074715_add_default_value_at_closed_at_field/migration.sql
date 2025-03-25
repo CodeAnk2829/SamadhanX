@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Complaint" ALTER COLUMN "closedAt" SET DEFAULT CURRENT_TIMESTAMP;
