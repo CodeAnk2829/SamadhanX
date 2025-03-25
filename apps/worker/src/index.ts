@@ -18,6 +18,8 @@ async function startWorker() {
                 result = event;
             }
 
+            // TODO: check whether the event is "closed" or "escalated" then perform actions
+            
             const jsonData = JSON.parse(result as string);
 
             // find the next incharge

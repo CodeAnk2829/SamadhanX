@@ -1,4 +1,6 @@
+export const ASSIGNED = "ASSIGNED";
 export const CREATED = "CREATED";
+export const CLOSED = "CLOSED";
 export const DELETED = "DELETED";
 export const DELEGATED = "DELEGATED";
 export const ESCALATED = "ESCALATED";

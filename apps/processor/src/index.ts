@@ -1,6 +1,7 @@
 import { prisma } from "@repo/db/client";
 import { RedisClient } from "@repo/redis/client";
-import { CREATED, DELEGATED, DELETED, ESCALATED, RESOLVED, UPDATED, UPVOTED } from "@repo/types/wsMessageTypes";
+import { CREATED, CLOSED, DELEGATED, DELETED, ESCALATED, RESOLVED, UPDATED, UPVOTED } from "@repo/types/wsMessageTypes";
+import { Datetime } from "aws-sdk/clients/costoptimizationhub";
 
 async function main() {
     const redisClient = await RedisClient.getInstance();
@@ -18,6 +19,21 @@ export interface CreateComplaintPayload {
     escalation_due_at: Date;
     locationId: number;
     rank: number;
+}
+
+export interface ClosedComplaintPayload {
+    complaintId: String;
+    complainerId: String;
+    isAssignedTo: String;
+    access: String;
+    title: String;
+    closedAt: Datetime;
+    feedback: {
+        id: String;
+        mood: String;
+        remarks: String;
+        givenAt: Datetime;
+    }
 }
 
 export interface EscalateComplaintPayload {
@@ -187,7 +203,61 @@ async function processWithExponentialBackOff(event: any, redisClient: RedisClien
                     }
 
                     break;
-                
+                case  "complaint_closed": 
+                    const closurePayload = event.payload as unknown as ClosedComplaintPayload;
+
+                    const isClosedEventPublish = await prisma.processedEvent.findUnique({
+                        where: { eventId: idemPotencyKey }
+                    });
+
+                    if (!isClosedEventPublish) {
+                        // publish this event to 'closure' channel
+                        await redisClient.publish("closure", JSON.stringify({
+                            idemPotencyKey,
+                            type: CLOSED,
+                            data: {
+                                complaintId: closurePayload.complaintId,
+                                complainerId: closurePayload.complainerId,
+                                isAssignedTo: closurePayload.isAssignedTo,
+                                access: closurePayload.access,
+                                title: closurePayload.title,
+                                closedAt: closurePayload.closedAt,
+                                feedback: {
+                                    id: closurePayload.feedback.id,
+                                    mood: closurePayload.feedback.mood,
+                                    remarks: closurePayload.feedback.remarks,
+                                    givenAt: closurePayload.feedback.givenAt
+                                }
+                            }
+                        }));
+
+                        const storeProcessedEvent = await prisma.processedEvent.create({
+                            data: {
+                                eventId: idemPotencyKey,
+                                processedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000))
+                            }
+                        });
+
+                        if (!storeProcessedEvent) {
+                            throw new Error("Could not store the processed event. Retrying...");
+                        }
+                    }
+
+                    const markClosureAsProcessed = await prisma.complaintOutbox.update({
+                        where: {
+                            id: event.id,
+                        },
+                        data: {
+                            status: "PROCESSED"
+                        }
+                    });
+
+                    if (!markClosureAsProcessed) {
+                        throw new Error("Could not mark escalation as processed. Retrying...");
+                    }
+
+                    break;
+
                 case "complaint_deleted": 
                     const deletionPayload = event.payload as unknown as DeleteComplaintPayload;
 

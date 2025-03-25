@@ -80,6 +80,13 @@ export const createComplaint = async (req: any, res: any) => {
                     complaintResolution: {
                         create: {}
                     },
+                    feedback: {
+                        create: {
+                            mood: "",
+                            remarks: "",
+                            givenAt: new Date(currentDateTime)
+                        }
+                    },
                     user: {
                         connect: {
                             id: req.user.id
@@ -230,6 +237,124 @@ export const createComplaint = async (req: any, res: any) => {
         res.status(400).json({
             ok: false,
             error: err instanceof Error ? err.message : "An error occurred while creating the complaint"
+        });
+    }
+}
+
+export const closeComplaint = async (req: any, res: any) => {
+    try {
+        const { complaintId, mood, remarks } = req.body;
+        const userId = req.user.id;
+
+        // check whether this complaint belong to the logged in user
+        const complaintDetails = await prisma.complaint.findUnique({
+            where: {
+                id: complaintId
+            },
+            select: {
+                userId: true,
+                status: true,
+            }
+        });
+
+        if (!complaintDetails) {
+            throw new Error("Could not fetch complaint details.");
+        }
+
+        if (complaintDetails.userId !== userId) {
+            throw new Error("Access denied");
+        }
+
+        if (complaintDetails.status !== "RESOLVED") {
+            throw new Error("Complaint is not supposed to be closed at this state.");
+        }
+
+        const complaintClosed = await prisma.$transaction(async (tx) => {
+            const closeComplaint = await tx.complaint.update({
+                where: {
+                    id: complaintId,
+                },
+                data: {
+                    status: "CLOSED",
+                    feedback: {
+                        update: {
+                            mood,
+                            remarks,
+                            givenAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),                            
+                        }
+                    },
+                    closedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                },
+                include: {
+                    feedback: true,
+                    complaintAssignment: {
+                        include: {
+                            user: true,
+                        }
+                    },
+                }
+            });
+    
+            if (!closeComplaint) {
+                throw new Error("Could not close the complaint.");
+            }
+            
+            const storeInHistory = await tx.complaintHistory.create({
+                data: {
+                    complaintId,
+                    eventType: "CLOSED",
+                    handledBy: userId,
+                    happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                }
+            });
+
+            if (!storeInHistory) {
+                throw new Error("Could not store closure event in history.");
+            }
+
+            const outboxDetails = await tx.complaintOutbox.create({
+                data: {
+                    eventType: "complaint_closed",
+                    payload: {
+                        complaintId: closeComplaint.id,
+                        complainerId: closeComplaint.userId,
+                        isAssignedTo: closeComplaint.complaintAssignment?.user?.id,
+                        access: closeComplaint.access,
+                        title: closeComplaint.title,
+                        closedAt: closeComplaint.closedAt,
+                        feedback: {
+                            id: closeComplaint.feedback?.id,
+                            mood: closeComplaint.feedback?.mood,
+                            remarks: closeComplaint.feedback?.remarks,
+                            givenAt: closeComplaint.feedback?.givenAt
+                        }
+                    },
+                    status: "PENDING",
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                }
+            });
+
+            if (!outboxDetails) {
+                throw new Error("Could not create outbox details.");
+            }
+
+            return closeComplaint;
+        });
+
+        if (!complaintClosed) {
+            throw new Error("Could not close the complaint.");
+        }
+
+        res.status(200).json({
+            ok: true,
+            message: "Complaint closed successfully.",
+            complaintClosed,
+        });
+
+    } catch (err) {
+        res.status(400).json({
+            ok: false,
+            error: err instanceof Error ? err.message : "An error occurred while closing the complaint."
         });
     }
 }
