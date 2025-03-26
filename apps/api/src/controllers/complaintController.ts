@@ -1,50 +1,10 @@
 import { prisma } from "@repo/db/client";
 import { CreateComplaintSchema, UpdateComplaintSchema } from "@repo/types/complaintTypes";
-import { CREATED, UPDATED, UPVOTED, DELETED } from "@repo/types/wsMessageTypes";
+import {  UPDATED, UPVOTED, DELETED } from "@repo/types/wsMessageTypes";
 import { RedisManager } from "../util/RedisManager";
-
-export const createComplaintOutbox = async (req: any, res: any) => {
-    try {
-        const complaints = await prisma.complaint.findMany({
-            select: { id: true }
-        });
-
-        if (!complaints) {
-            throw new Error("could not find complaints");
-        }
-
-        const complaintData = complaints.map((c: any) => {
-            return {
-                complaintId: c.id
-            }
-        });
-
-        console.log(complaintData);
-
-        const count = await prisma.complaintOutbox.createMany({
-            data: complaintData
-        })
-
-        if(!count) {
-            throw new Error("could not fill outbox");
-        }
-
-        res.status(201).json({
-            ok: true,
-            count
-        });
-
-    } catch (err) {
-        res.status(400).json({
-            ok: false,
-            error: err instanceof Error ? err.message : "An error occurred."
-        });
-    }
-}
 
 export const createComplaint = async (req: any, res: any) => {
     try {
-        const redisClient = RedisManager.getInstance();
         const body = req.body; // { title: string, description: string, access: string, postAsAnonymous: boolean, locationId: Int, tags: Array<Int>, attachments: Array<String> }
         const parseData = CreateComplaintSchema.safeParse(body);
 
@@ -84,104 +44,150 @@ export const createComplaint = async (req: any, res: any) => {
 
         const currentDateTime = Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000);
 
-        const createComplaint = await prisma.complaint.create({
-            data: {
-                title: parseData.data.title,
-                description: parseData.data.description,
-                access: parseData.data.access,
-                postAsAnonymous: parseData.data.postAsAnonymous,
-                complaintOutbox: {
-                    create: {}
+        const createComplaint = await prisma.$transaction(async (tx: any) => {
+            const complaintDetails = await tx.complaint.create({
+                data: {
+                    title: parseData.data.title,
+                    description: parseData.data.description,
+                    access: parseData.data.access,
+                    postAsAnonymous: parseData.data.postAsAnonymous,
+
+                    complaintAssignment: {
+                        create: {
+                            assignedTo: issueIncharge.inchargeId,
+                            assignedAt: new Date(currentDateTime).toISOString()
+                        }
+                    },
+                    complaintDelegation: {
+                        create: {}
+                    },
+                    complaintHistory: {
+                        createMany: {
+                            data: [
+                                {
+                                    eventType: "CREATED",
+                                    handledBy: req.user.id,
+                                    happenedAt: new Date(currentDateTime)
+                                },
+                                {
+                                    eventType: "ASSIGNED",
+                                    handledBy: issueIncharge.inchargeId,
+                                    happenedAt: new Date(currentDateTime)
+                                }
+                            ]
+                        }
+                    },
+                    complaintResolution: {
+                        create: {}
+                    },
+                    user: {
+                        connect: {
+                            id: req.user.id
+                        }
+                    },
+                    status: "ASSIGNED",
+                    tags: {
+                        create: tagData
+                    },
+                    attachments: {
+                        create: attachmentsData
+                    },
+                    createdAt: new Date(currentDateTime).toISOString(),
+                    expiredAt: new Date(currentDateTime + 2 * 60 * 1000).toISOString() // 7 days from now
                 },
-                complaintAssignment: {
-                    create: {
-                        assignedTo: issueIncharge.inchargeId,
-                        assignedAt: new Date(currentDateTime).toISOString()
-                    }
-                },
-                complaintDelegation: {
-                    create: {}
-                },
-                complaintResolution: {
-                    create: {}
-                },
-                user: {
-                    connect: {
-                        id: req.user.id
-                    }
-                },
-                status: "ASSIGNED",
-                tags: {
-                    create: tagData
-                },
-                attachments: {
-                    create: attachmentsData
-                },
-                createdAt: new Date(currentDateTime).toISOString(),
-                expiredAt: new Date(currentDateTime + 2 * 60 * 1000).toISOString() // 7 days from now
-            },
-            include: {
-                attachments: {
-                    select: {
-                        id: true,
-                        imageUrl: true
-                    }
-                },
-                tags: {
-                    select: {
-                        tags: {
-                            select: {
-                                tagName: true
+                include: {
+                    attachments: {
+                        select: {
+                            id: true,
+                            imageUrl: true
+                        }
+                    },
+                    tags: {
+                        select: {
+                            tags: {
+                                select: {
+                                    tagName: true
+                                }
                             }
                         }
-                    }
-                },
-                user: {
-                    select: {
-                        id: true,
-                        name: true,
-                    }
-                },
-                complaintAssignment: {
-                    select: {
-                        assignedAt: true,
-                        user: {
-                            select: {
-                                id: true,
-                                name: true,
-                                phoneNumber: true,
-                                issueIncharge: {
-                                    select: {
-                                        designation: {
-                                            select: {
-                                                designation: {
-                                                    select: {
-                                                        designationName: true,
-                                                    }
-                                                },
-                                                rank: true,
-                                            }
-                                        },
-                                        location: {
-                                            select: {
-                                                locationName: true,
+                    },
+                    user: {
+                        select: {
+                            id: true,
+                            name: true,
+                        }
+                    },
+                    complaintAssignment: {
+                        select: {
+                            assignedAt: true,
+                            user: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    phoneNumber: true,
+                                    issueIncharge: {
+                                        select: {
+                                            designation: {
+                                                select: {
+                                                    designation: {
+                                                        select: {
+                                                            designationName: true,
+                                                        }
+                                                    },
+                                                    rank: true,
+                                                }
+                                            },
+                                            location: {
+                                                select: {
+                                                    id: true,
+                                                    locationName: true,
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
-                },
+                    },
+                }
+            });
+
+            if (!complaintDetails) {
+                throw new Error("Could not create complaint. Please try again");
             }
+
+            const outboxDetails = await tx.complaintOutbox.create({
+                data: {
+                    eventType: "complaint_created",
+                    payload: {
+                        complaintId: complaintDetails.id,
+                        complainerId: complaintDetails.userId,
+                        access: complaintDetails.access,
+                        title: complaintDetails.title,
+                        isAssignedTo: complaintDetails.complaintAssignment?.user?.id,
+                        escalation_due_at: complaintDetails.expiredAt,
+                        locationId: complaintDetails.complaintAssignment?.user?.issueIncharge?.location.id,
+                        rank: complaintDetails.complaintAssignment?.user?.issueIncharge?.designation.rank,
+                    },
+                    status: "PENDING",
+                    processAfter: new Date(currentDateTime).toISOString()
+                }
+            });
+
+            if (!outboxDetails) {
+                throw new Error("Could not create outbox details.");
+            }
+
+            return complaintDetails;
         });
 
+        
         if (!createComplaint) {
             throw new Error("Could not create complaint. Please try again");
         }
 
-        const tagNames = createComplaint.tags.map(tag => tag.tags.tagName);
-        const attachments = createComplaint.attachments.map(attachment => attachment.imageUrl);
+        const tagNames = createComplaint.tags.map((tag: any) => tag.tags.tagName);
+        const attachments = createComplaint.attachments.map((attachment: any) => attachment.imageUrl);
 
         let complaintResponse = createComplaint;
 
@@ -194,18 +200,6 @@ export const createComplaint = async (req: any, res: any) => {
                 }
             }
         }
-
-        // publish this event on 'creation' channel
-        await redisClient.publishMessage("creation", {
-            type: CREATED,
-            data: {
-                complaintId: complaintResponse.id,
-                complainerId: complaintResponse.userId,
-                access: complaintResponse.access,
-                title: complaintResponse.title,
-                isAssignedTo: complaintResponse.complaintAssignment?.user?.id as string
-            }
-        });
 
         res.status(201).json({
             ok: true,
@@ -242,7 +236,6 @@ export const createComplaint = async (req: any, res: any) => {
 
 export const deletedComplaintById = async (req: any, res: any) => {
     try {
-        const redisClient = RedisManager.getInstance();
         const complaintId = req.params.id;
         const currentUserId = req.user.id;
 
@@ -260,40 +253,56 @@ export const deletedComplaintById = async (req: any, res: any) => {
             throw new Error("Access Denied. You do not have permissions to make changes.")
         }
 
-        const deletedComplaint = await prisma.complaint.delete({
-            where: { id: complaintId },
-            select: { 
-                id: true,
-                title: true, 
-                access: true,
-                userId: true,
-                complaintAssignment: {
-                    select: {
-                        user: {
-                            select: {
-                                id: true,
+        const deletedComplaint = await prisma.$transaction(async (tx: any) => {
+            const complaintDeletion = await tx.complaint.delete({
+                where: { id: complaintId },
+                select: { 
+                    id: true,
+                    title: true, 
+                    access: true,
+                    userId: true,
+                    complaintAssignment: {
+                        select: {
+                            user: {
+                                select: {
+                                    id: true,
+                                }
                             }
                         }
                     }
                 }
+            });
+
+            if (!complaintDeletion) {
+                throw new Error("Deletion request failed.");
             }
+
+            const outboxDetails = await tx.complaintOutbox.create({
+                data: {
+                    eventType: "complaint_deleted",
+                    payload: {
+                        complaintId,
+                        complainerId: complaintDeletion.userId,
+                        access: complaintDeletion.access,
+                        title: complaintDeletion.title,
+                        wasAssignedTo: complaintDeletion.complaintAssignment?.user?.id as string
+                    },
+                    status: "PENDING",
+                    processAfter: new Date(Date.now())
+                }
+            });
+
+            if (!outboxDetails) {
+                throw new Error("Could not create complaint_deleted event in outbox.");
+            }
+
+            return complaintDeletion;
         });
+        
 
         if (!deletedComplaint) {
             throw new Error("Could not delete complaint. Please try again.");
         }
-
-        // publish this event on "deletion" channel
-        await redisClient.publishMessage("deletion", {
-            type: DELETED,
-            data: {
-                complaintId,
-                complainerId: deletedComplaint.userId,
-                access: deletedComplaint.access,
-                title: deletedComplaint.title,
-                wasAssignedTo: deletedComplaint.complaintAssignment?.user?.id as string
-            }
-        });
 
         res.status(200).json({
             ok: true,
@@ -528,7 +537,7 @@ export const getComplaintById = async (req: any, res: any) => {
                         }
                     }
                 },
-            }
+            },
         });
 
         if (!complaint) {
@@ -595,6 +604,96 @@ export const getComplaintById = async (req: any, res: any) => {
         res.status(400).json({
             ok: false,
             error: err instanceof Error ? err.message : "An error occurred while fetching complaint"
+        });
+    }
+}
+
+export const getComplaintHistory = async (req: any, res: any) => {
+    try {
+        const complaintId = req.params.id;
+        const userId = req.user.id;
+        const userRole = req.user.role;
+
+        // check whether issue incharge is not accessing the history
+        if (userRole === "ISSUE_INCHARGE") {
+            throw new Error("Unauthorized Access.");
+        }
+
+        // check whether this complaint corresponds to the current user
+        const complaintUserDetails = await prisma.complaint.findUnique({
+            where: {
+                id: complaintId,
+            },
+            select: {
+                userId: true
+            }
+        });
+
+        if (!complaintUserDetails) {
+            throw new Error("Couldn't fetch complaint details.");
+        }
+
+        if (complaintUserDetails.userId !== userId) {
+            throw new Error("Unauthorized Access.");
+        }
+
+        // fetch the complaint history
+        const complaintHistory = await prisma.complaintHistory.findMany({
+            where: {
+                complaintId
+            },
+            include: {
+                complaint: {
+                    select: {
+                        id: true,
+                        title: true,
+                        createdAt: true,
+                        expiredAt: true,
+                        updatedAt: true,
+                    }
+                },
+                user: {
+                    select: {
+                        name: true,
+                        role: true,
+                        issueIncharge: {
+                            select: {
+                                designation: {
+                                    select: {
+                                        designation: {
+                                            select: {
+                                                designationName: true,
+                                            }
+                                        },
+                                        rank: true,
+                                    }
+                                },
+                                location: true,
+                            }
+                        },
+                        resolver: {
+                            select: {
+                                occupation: true,
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (!complaintHistory) {
+            throw new Error("Couldn't fetch complaint history");
+        }
+
+        res.status(200).json({
+            ok: true,
+            complaintHistory
+        });
+
+    } catch(err) {
+        res.status(400).json({
+            ok: false,
+            error: err instanceof Error ? err.message : "An error occurred while fetching the complaint history.",
         });
     }
 }
@@ -789,68 +888,98 @@ export const updateComplaintById = async (req: any, res: any) => {
             updatedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
         }
 
-        const updateComplaint = await prisma.complaint.update({
-            where: { id: complaintId },
-            data: dataToUpdate,
-            include: {
-                attachments: {
-                    select: {
-                        id: true,
-                        imageUrl: true
-                    }
-                },
-                tags: {
-                    select: {
-                        tags: {
-                            select: {
-                                tagName: true
+        const updateDetails = await prisma.$transaction(async (tx: any) => {
+            const updateComplaint = await tx.complaint.update({
+                where: { id: complaintId },
+                data: dataToUpdate,
+                include: {
+                    attachments: {
+                        select: {
+                            id: true,
+                            imageUrl: true
+                        }
+                    },
+                    tags: {
+                        select: {
+                            tags: {
+                                select: {
+                                    tagName: true
+                                }
                             }
                         }
-                    }
-                },
-                user: {
-                    select: {
-                        id: true,
-                        name: true,
-                    }
-                },
-                complaintAssignment: {
-                    select: {
-                        assignedAt: true,
-                        user: {
-                            select: {
-                                id: true,
-                                name: true,
-                                phoneNumber: true,
-                                issueIncharge: {
-                                    select: {
-                                        designation: {
-                                            select: {
-                                                designation: {
-                                                    select: {
-                                                        designationName: true,
-                                                    }
-                                                },
-                                                rank: true,
-                                            }
-                                        },
-                                        location: {
-                                            select: {
-                                                locationName: true,
+                    },
+                    user: {
+                        select: {
+                            id: true,
+                            name: true,
+                        }
+                    },
+                    complaintAssignment: {
+                        select: {
+                            assignedAt: true,
+                            user: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    phoneNumber: true,
+                                    issueIncharge: {
+                                        select: {
+                                            designation: {
+                                                select: {
+                                                    designation: {
+                                                        select: {
+                                                            designationName: true,
+                                                        }
+                                                    },
+                                                    rank: true,
+                                                }
+                                            },
+                                            location: {
+                                                select: {
+                                                    locationName: true,
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
-                },
+                    },
+                }
+            });
+    
+            if (!updateComplaint) {
+                throw new Error("Could not create complaint. Please try again");
             }
-        });
 
-        if (!updateComplaint) {
-            throw new Error("Could not create complaint. Please try again");
-        }
+            const outboxDetails = await tx.complaintOutbox.create({
+                data: {
+                    eventType: "complaint_updated",
+                    payload: {
+                        complaintId: updateComplaint.id,
+                        complainerId: updateComplaint.userId,
+                        title: updateComplaint.title,
+                        description: updateComplaint.description,
+                        access: updateComplaint.access,
+                        postAsAnonymous: updateComplaint.postAsAnonymous,
+                        status: UPDATED,
+                        isAssignedTo: updateComplaint.complaintAssignment?.user?.id as string,
+                        attachments: updateComplaint.attachments,
+                        tags: updateComplaint.tags,
+                        updatedAt: updateComplaint.updatedAt,
+                    },
+                    status: "PENDING",
+                    processAfter: new Date(Date.now())
+                }
+            });
+
+            if (!outboxDetails) {
+                throw new Error("Could not create complaint_update details in outbox.");
+            }
+            
+            return updateComplaint;
+        });
+        
 
         // check whether this user has upvoted this complaint
         let hasUpvoted: boolean = false;
@@ -864,38 +993,20 @@ export const updateComplaintById = async (req: any, res: any) => {
             hasUpvoted = true;
         }
 
-        const tagNames = updateComplaint.tags.map(tag => tag.tags.tagName);
-        const attachments = updateComplaint.attachments.map(attachment => attachment.imageUrl);
+        const tagNames = updateDetails.tags.map((tag: any) => tag.tags.tagName);
+        const attachments = updateDetails.attachments.map((attachment: any) => attachment.imageUrl);
 
-        let complaintResponse = updateComplaint;
+        let complaintResponse = updateDetails;
 
-        if (updateComplaint.postAsAnonymous) {
+        if (updateDetails.postAsAnonymous) {
             complaintResponse = {
-                ...updateComplaint,
+                ...updateDetails,
                 user: {
-                    id: updateComplaint.user.id,
+                    id: updateDetails.user.id,
                     name: "Anonymous",
                 }
             }
         }
-
-        // publish this event on 'updation' channel
-        await redisClient.publishMessage("updation", {
-            type: UPDATED,
-            data: {
-                complaintId: complaintResponse.id,
-                complainerId: complaintResponse.userId,
-                title: complaintResponse.title,
-                description: complaintResponse.description,
-                access: complaintResponse.access,
-                postAsAnonymous: complaintResponse.postAsAnonymous,
-                status: UPDATED,
-                isAssignedTo: complaintResponse.complaintAssignment?.user?.id as string,
-                attachments: complaintResponse.attachments,
-                tags: complaintResponse.tags,
-                updatedAt: complaintResponse.updatedAt,
-            }
-        });
 
         res.status(200).json({
             ok: true,
@@ -985,46 +1096,61 @@ export const upvoteComplaint = async (req: any, res: any) => {
             finalAction = { decrement: 1 };
         }
 
-        // count total upvotes for a complaint
-        const upvotes = await prisma.complaint.update({
-            where: { id: complaintId },
-            data: {
-                totalUpvotes: finalAction
-            },
-            select: {
-                title: true,
-                userId: true,
-                access: true,
-                totalUpvotes: true,
-                complaintAssignment: {
-                    select: {
-                        user: {
-                            select: {
-                                id: true,
+        const upvotes = await prisma.$transaction(async (tx: any) => {
+            // count total upvotes for a complaint
+            const upvoteComplaint = await tx.complaint.update({
+                where: { id: complaintId },
+                data: {
+                    totalUpvotes: finalAction
+                },
+                select: {
+                    title: true,
+                    userId: true,
+                    access: true,
+                    totalUpvotes: true,
+                    complaintAssignment: {
+                        select: {
+                            user: {
+                                select: {
+                                    id: true,
+                                }
                             }
                         }
                     }
                 }
+            });
+    
+            if (!upvoteComplaint) {
+                throw new Error("Could not upvote the complaint");
             }
+
+            const outboxDetails = await tx.complaintOutbox.create({
+                data: {
+                    eventType: "complaint_upvoted",
+                    payload: {
+                        complaintId,
+                        complainerId: upvoteComplaint.userId,
+                        access: upvoteComplaint.access,
+                        title: upvoteComplaint.title,
+                        upvotes: upvoteComplaint.totalUpvotes,
+                        hasUpvoted: hasUpvoted ? false : true,
+                        isAssignedTo: upvoteComplaint.complaintAssignment?.user?.id as string,
+                    },
+                    status: "PENDING",
+                    processAfter: new Date(Date.now())
+                }
+            });
+
+            if (!outboxDetails) {
+                throw new Error("Could not create complaint_upvoted event in outbox.");
+            }
+
+            return upvoteComplaint;
         });
 
         if (!upvotes) {
             throw new Error("Could not count total upvotes for the complaint");
         }
-
-        // publish this event on 'updation' channel
-        await redisClient.publishMessage("updation", {
-            type: UPVOTED,
-            data: {
-                complaintId,
-                complainerId: upvotes.userId,
-                access: upvotes.access,
-                title: upvotes.title,
-                upvotes: upvotes.totalUpvotes,
-                hasUpvoted: hasUpvoted ? false : true,
-                isAssignedTo: upvotes.complaintAssignment?.user?.id as string,
-            }
-        });
 
         res.status(200).json({
             ok: true,

@@ -1,6 +1,6 @@
 import Router from "express";
 import { authMiddleware, authorizeMiddleware } from "../middleware/auth";
-import { createComplaint, createComplaintOutbox, deletedComplaintById, getAllComplaints, getComplaintById, getUsersComplaints, updateComplaintById, upvoteComplaint } from "../controllers/complaintController";
+import { createComplaint, deletedComplaintById, getAllComplaints, getComplaintById, getComplaintHistory, getUsersComplaints, updateComplaintById, upvoteComplaint } from "../controllers/complaintController";
 
 const router = Router();
 
@@ -18,7 +18,7 @@ router.post("/upvote/:id", authMiddleware, authorizeMiddleware(Role), upvoteComp
 router.get("/get/all-complaints", authMiddleware, authorizeMiddleware(Role), getAllComplaints); // get all complaints
 router.get("/get/complaint/:id", authMiddleware, authorizeMiddleware(Role), getComplaintById); // get a complaint by id
 router.get("/get/user-complaints", authMiddleware, authorizeMiddleware(Role), getUsersComplaints); // get an user's complaints
-router.get("/get/complaintOutbox", createComplaintOutbox);
+router.get("/get/complaint-history/:id", authMiddleware, authorizeMiddleware(Role), getComplaintHistory); // get complaint history by complaint id
 
 // UPDATE
 router.patch("/update/:id", authMiddleware, authorizeMiddleware(Role), updateComplaintById);

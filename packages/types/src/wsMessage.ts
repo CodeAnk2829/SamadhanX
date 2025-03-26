@@ -2,10 +2,12 @@ export const CREATED = "CREATED";
 export const DELETED = "DELETED";
 export const DELEGATED = "DELEGATED";
 export const ESCALATED = "ESCALATED";
+export const RESOLVED = "RESOLVED";
 export const UPDATED = "UPDATED";
 export const UPVOTED = "UPVOTED";
 
 export type WsMessage = {
+    idemPotencyKey: string,
     type: typeof CREATED,
     data: {
         complaintId: string,
@@ -15,6 +17,7 @@ export type WsMessage = {
         isAssignedTo: string,
     }
 } | {
+    idemPotencyKey: string,
     type: typeof DELETED,
     data: {
         complaintId: string,
@@ -24,6 +27,7 @@ export type WsMessage = {
         wasAssignedTo: string,
     }
 } | {
+    idemPotencyKey: string,
     type: typeof DELEGATED,
     data: {
         complaintId: string,
@@ -37,6 +41,7 @@ export type WsMessage = {
         delegatedAt: Date
     }
 } | {
+    idemPotencyKey: string,
     type: typeof ESCALATED,
     data: {
         complaintId: string,
@@ -49,6 +54,7 @@ export type WsMessage = {
         designation: string
     }
 } | {
+    idemPotencyKey: string,
     type: typeof UPDATED,
     data: {
         complaintId: string,
@@ -64,6 +70,7 @@ export type WsMessage = {
         updatedAt: Date,
     }
 } | {
+    idemPotencyKey: string,
     type: typeof UPVOTED,
     data: {
         complaintId: string,
@@ -73,5 +80,23 @@ export type WsMessage = {
         upvotes: number,
         hasUpvoted: boolean,
         isAssignedTo: string,
+    }
+} | {
+    idemPotencyKey: string,
+    type: typeof RESOLVED,
+    data: {
+        complaintId: string;
+        complainerId: string;
+        access: string;
+        title: string;
+        wasAssignedTo: string,
+        inchargeName: string,
+        resolverDetails: {
+            id: string,
+            name: string,
+            email: string,
+            phoneNumber: string,
+        },
+        resolvedAt: Date
     }
 }

@@ -24,6 +24,7 @@ model User {
   complaints          Complaint[]
   complaintAssignment ComplaintAssignment[]
   complaintDelegation ComplaintDelegation[]
+  complaintHistory    ComplaintHistory[]
   complaintResolution ComplaintResolution[]
   issueIncharge       IssueIncharge?
   resolver            Resolver?
@@ -47,9 +48,9 @@ model Complaint {
   updatedAt           DateTime             @updatedAt
   userId              String
   user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  complaintOutbox     ComplaintOutbox?
   complaintAssignment ComplaintAssignment?
   complaintDelegation ComplaintDelegation?
+  complaintHistory    ComplaintHistory[]
   complaintResolution ComplaintResolution?
   feedbacks           Feedback[]
   notification        Notification[]
@@ -59,9 +60,12 @@ model Complaint {
 }
 
 model ComplaintOutbox {
-  id          String    @id @default(uuid())
-  complaintId String    @unique
-  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  id           String        @id @default(uuid())
+  eventType    String
+  payload      Json
+  status       ProcessStatus
+  processAfter DateTime
+  retryCount   Int           @default(0)
 }
 
 model Tag {
@@ -115,6 +119,16 @@ model ComplaintResolution {
   resolvedBy  String?
   user        User?     @relation(fields: [resolvedBy], references: [id], onDelete: SetNull)
   resolvedAt  DateTime?
+}
+
+model ComplaintHistory {
+  id          String    @id @default(uuid())
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  handledBy   String?
+  user        User?     @relation(fields: [handledBy], references: [id], onDelete: SetNull)
+  eventType   String
+  happenedAt  DateTime
 }
 
 model Designation {
@@ -210,6 +224,20 @@ model Upvote {
   @@unique([userId, complaintId])
 }
 
+model ProcessedEvent {
+  id          String   @id @default(uuid())
+  eventId     String   @unique
+  processedAt DateTime
+}
+
+enum ProcessStatus {
+  CANCELLED
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
 enum Role {
   STUDENT
   FACULTY
@@ -222,6 +250,7 @@ enum Status {
   ASSIGNED
   CLOSED
   DELEGATED
+  ESCALATED
   PENDING
   RESOLVED
   UNRESOLVED
