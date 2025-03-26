@@ -24,7 +24,7 @@ export interface CreateComplaintPayload {
 export interface ClosedComplaintPayload {
     complaintId: String;
     complainerId: String;
-    isAssignedTo: String;
+    isAssignedTo: String;   
     access: String;
     title: String;
     closedAt: Datetime;
@@ -258,6 +258,46 @@ async function processWithExponentialBackOff(event: any, redisClient: RedisClien
 
                     break;
 
+                case "complaint_closure_due": 
+                    console.log("entered into complaint closure due");
+
+                    const closureDuePayload = event.payload as unknown as ClosedComplaintPayload;
+                    const closureExpiryTimestamp = event.processAfter.getTime();
+                    const currentTimestamp = new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).getTime();
+
+                    if (currentTimestamp > closureExpiryTimestamp) {
+                        const pushClosureEvent = await redisClient.lPush("queue", JSON.stringify({
+                            eventType: "closure",
+                            id: event.id,
+                            complaintId: closureDuePayload.complaintId,
+                            complainerId: closureDuePayload.complainerId,
+                            isAssignedTo: closureDuePayload.isAssignedTo,
+                            access: closureDuePayload.access,
+                            title: closureDuePayload.title,
+                            closedAt: closureDuePayload.closedAt,
+                            feedback: {
+                                id: closureDuePayload.feedback.id,
+                                mood: closureDuePayload.feedback.mood,
+                                remarks: closureDuePayload.feedback.remarks,
+                                givenAt: closureDuePayload.feedback.givenAt
+                            }
+                        }));
+
+                        if (!pushClosureEvent) {
+                            throw new Error("Could not push the closure event to the queue");
+                        }
+
+                        const markClosureDueAsProcessed = await prisma.complaintOutbox.update({
+                            where: { id: event.id },
+                            data: { status: "PROCESSED" }
+                        });
+
+                        if (!markClosureDueAsProcessed) {
+                            throw new Error("Could not mark closure due as processed.");
+                        }
+                    }
+                    break;
+
                 case "complaint_deleted": 
                     const deletionPayload = event.payload as unknown as DeleteComplaintPayload;
 
@@ -366,12 +406,10 @@ async function processWithExponentialBackOff(event: any, redisClient: RedisClien
                     const timestamp1 = event.processAfter.getTime();
                     const timestamp2 = new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).getTime();
 
-                    console.log("Current time: ", event.processAfter);
-                    console.log("Expiry time: ", new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)));
-
                     if (timestamp1 < timestamp2) { // check if the complaint has expired
                         console.log("pushing into queue due to escalation was due");
                         const pushEscalationEvent = await redisClient.lPush("queue", JSON.stringify({
+                            eventType: "escalation",
                             id: event.id,
                             complaintId: escalationPayload.complaintId,
                             title: escalationPayload.title,

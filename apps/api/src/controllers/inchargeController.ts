@@ -598,7 +598,8 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
                         resolvedBy: true,
                         resolvedAt: true,
                     }
-                }
+                },
+                feedback: true
             }
         });
 
@@ -663,8 +664,8 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
                 throw new Error("Could not mark the complaint as resolved");
             }
 
-            const outboxDetails = await tx.complaintOutbox.create({
-                data: {
+            const outboxDetails = await tx.complaintOutbox.createMany({
+                data: [{
                     eventType: "complaint_resolved",
                     payload: {
                         complaintId,
@@ -678,7 +679,25 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
                     },
                     status: "PENDING",
                     processAfter: new Date(Date.now())
-                }
+                }, {
+                        eventType: "complaint_closure_due",
+                        payload: {
+                            complaintId,
+                            complainerId: complaintResolution.complaint.userId,
+                            isAssignedTo: complaintDetails.complaintAssignment?.user?.id,
+                            access: complaintDetails.access,
+                            title: complaintDetails.title,
+                            closedAt: complaintDetails.closedAt,
+                            feedback: {
+                                id: complaintDetails.feedback?.id,
+                                mood: complaintDetails.feedback?.mood,
+                                remarks: complaintDetails.feedback?.remarks,
+                                givenAt: complaintDetails.feedback?.givenAt,
+                            }
+                        },
+                        status: "PENDING",
+                        processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString()
+                    }]
             });
 
             if (!outboxDetails) {
