@@ -127,7 +127,14 @@ export const delegateComplaint = async (req: any, res: any) => {
                 },
                 data: {
                     status: "DELEGATED",
-                    actionTaken: true
+                    actionTaken: true,
+                    complaintHistory: {
+                        create: {
+                            eventType: "DELEGATED",
+                            handledBy: resolverId,
+                            happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                        }
+                    },
                 }
             })
 
@@ -248,11 +255,9 @@ export const escalateComplaint = async (req: any, res: any) => {
             }
         })
 
-
         if (!complaintDetails) {
             throw new Error("Could not find complaint details.");
         }
-
 
         // check whether this complaint is assigned to currently logged in incharge
         if (complaintDetails.complaintAssignment?.user?.id !== currentIncharge.id) {
@@ -306,6 +311,13 @@ export const escalateComplaint = async (req: any, res: any) => {
                         update: {
                             assignedTo: nextIncharge.incharge.id,
                             assignedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                        }
+                    },
+                    complaintHistory: {
+                        create: {
+                            eventType: "ESCALATED",
+                            handledBy: nextIncharge.incharge.id,
+                            happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
                     expiredAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString() // 2 mins after current time
@@ -656,7 +668,14 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
                 },
                 data: {
                     status: "RESOLVED",
-                    actionTaken: true
+                    actionTaken: true,
+                    complaintHistory: {
+                        create: {
+                            eventType: "RESOLVED",
+                            handledBy: currentInchargeId,
+                            happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                        }
+                    },
                 }
             });
 

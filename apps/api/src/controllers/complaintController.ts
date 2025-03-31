@@ -1,6 +1,6 @@
 import { prisma } from "@repo/db/client";
 import { CreateComplaintSchema, UpdateComplaintSchema } from "@repo/types/complaintTypes";
-import {  UPDATED, UPVOTED, DELETED } from "@repo/types/wsMessageTypes";
+import { UPDATED, UPVOTED, DELETED } from "@repo/types/wsMessageTypes";
 import { RedisManager } from "../util/RedisManager";
 
 export const createComplaint = async (req: any, res: any) => {
@@ -188,7 +188,7 @@ export const createComplaint = async (req: any, res: any) => {
             return complaintDetails;
         });
 
-        
+
         if (!createComplaint) {
             throw new Error("Could not create complaint. Please try again");
         }
@@ -276,11 +276,18 @@ export const closeComplaint = async (req: any, res: any) => {
                 },
                 data: {
                     status: "CLOSED",
+                    complaintHistory: {
+                        create: {
+                            eventType: "CLOSED",
+                            handledBy: userId,
+                            happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                        }
+                    },
                     feedback: {
                         update: {
                             mood,
                             remarks,
-                            givenAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),                            
+                            givenAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
                         }
                     },
                     closedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
@@ -294,22 +301,9 @@ export const closeComplaint = async (req: any, res: any) => {
                     },
                 }
             });
-    
+
             if (!closeComplaint) {
                 throw new Error("Could not close the complaint.");
-            }
-            
-            const storeInHistory = await tx.complaintHistory.create({
-                data: {
-                    complaintId,
-                    eventType: "CLOSED",
-                    handledBy: userId,
-                    happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
-                }
-            });
-
-            if (!storeInHistory) {
-                throw new Error("Could not store closure event in history.");
             }
 
             const outboxDetails = await tx.complaintOutbox.create({
@@ -381,9 +375,9 @@ export const deletedComplaintById = async (req: any, res: any) => {
         const deletedComplaint = await prisma.$transaction(async (tx: any) => {
             const complaintDeletion = await tx.complaint.delete({
                 where: { id: complaintId },
-                select: { 
+                select: {
                     id: true,
-                    title: true, 
+                    title: true,
                     access: true,
                     userId: true,
                     complaintAssignment: {
@@ -400,6 +394,19 @@ export const deletedComplaintById = async (req: any, res: any) => {
 
             if (!complaintDeletion) {
                 throw new Error("Deletion request failed.");
+            }
+
+            const updateComplaintHistory = await tx.complaintHistory.create({
+                data: {
+                    complaintId,
+                    eventType: "DELETED",
+                    handledBy: currentUserId,
+                    happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                }
+            });
+
+            if (!updateComplaintHistory) {
+                throw new Error("Could not update complaint history");
             }
 
             const outboxDetails = await tx.complaintOutbox.create({
@@ -423,7 +430,7 @@ export const deletedComplaintById = async (req: any, res: any) => {
 
             return complaintDeletion;
         });
-        
+
 
         if (!deletedComplaint) {
             throw new Error("Could not delete complaint. Please try again.");
@@ -589,7 +596,7 @@ export const getComplaintById = async (req: any, res: any) => {
 
         const userRole = req.user.role;
 
-        if(userRole === "ISSUE_INCHARGE") {
+        if (userRole === "ISSUE_INCHARGE") {
             // check whether the complaint is assigned to the current incharge
             const assignedComplaint = await prisma.complaint.findFirst({
                 where: {
@@ -603,10 +610,10 @@ export const getComplaintById = async (req: any, res: any) => {
                 }
             });
 
-            if(!assignedComplaint) {
+            if (!assignedComplaint) {
                 throw new Error("Unauthorized. You are not assigned to this complaint");
             }
-        } 
+        }
 
         const complaint = await prisma.complaint.findUnique({
             where: {
@@ -815,7 +822,7 @@ export const getComplaintHistory = async (req: any, res: any) => {
             complaintHistory
         });
 
-    } catch(err) {
+    } catch (err) {
         res.status(400).json({
             ok: false,
             error: err instanceof Error ? err.message : "An error occurred while fetching the complaint history.",
@@ -924,7 +931,7 @@ export const getUsersComplaints = async (req: any, res: any) => {
                 expiredAt: complaint.expiredAt,
             }
         });
-        
+
         res.status(200).json({
             ok: true,
             complaintDetails,
@@ -1072,7 +1079,7 @@ export const updateComplaintById = async (req: any, res: any) => {
                     },
                 }
             });
-    
+
             if (!updateComplaint) {
                 throw new Error("Could not create complaint. Please try again");
             }
@@ -1101,10 +1108,10 @@ export const updateComplaintById = async (req: any, res: any) => {
             if (!outboxDetails) {
                 throw new Error("Could not create complaint_update details in outbox.");
             }
-            
+
             return updateComplaint;
         });
-        
+
 
         // check whether this user has upvoted this complaint
         let hasUpvoted: boolean = false;
@@ -1183,7 +1190,7 @@ export const upvoteComplaint = async (req: any, res: any) => {
         // first check an user has already upvoted
         const hasUpvoted = await prisma.upvote.findFirst({
             where: { userId, complaintId },
-            select: { 
+            select: {
                 id: true,
                 complaint: {
                     select: {
@@ -1244,7 +1251,7 @@ export const upvoteComplaint = async (req: any, res: any) => {
                     }
                 }
             });
-    
+
             if (!upvoteComplaint) {
                 throw new Error("Could not upvote the complaint");
             }
