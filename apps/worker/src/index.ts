@@ -70,6 +70,13 @@ async function startWorker() {
                                     assignedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                                 }
                             },
+                            complaintHistory: {
+                                create: {
+                                    eventType: "ESCALATED",
+                                    handledBy: nextIncharge.incharge.id,
+                                    happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                                }
+                            },
                             expiredAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString() // 2 mins after current time
                         },
                         include: {
@@ -182,6 +189,12 @@ async function startWorker() {
                         where: { id: jsonData.complaintId },
                         data: {
                             status: "CLOSED",
+                            complaintHistory: {
+                                create: {
+                                    eventType: "CLOSED",
+                                    happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                                }
+                            },
                             feedback: {
                                 update: {
                                     mood: "",

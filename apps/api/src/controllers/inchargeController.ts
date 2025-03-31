@@ -754,7 +754,7 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
 
         const complaintResolutionDetails = {
             complaintId,
-            status: resolvedComplaint.complaint.status,
+            status: "RESOLVED",
             resolvedBy: resolvedComplaint.user,
             resolvedAt: resolvedComplaint.resolvedAt
         }
