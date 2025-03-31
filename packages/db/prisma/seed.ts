@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
@@ -91,25 +92,25 @@ async function main() {
                 name: "Admin",
                 email: "admin@gmail.com",
                 phoneNumber: "0000000000",
-                password: "test@123",
+                password: bcrypt.hashSync("test@123", 10),
                 role: "ADMIN"
             }, {
                 name: "Ankit",
                 email: "ankit@gmail.com",
                 phoneNumber: "2222222222",
-                password: "test@123",
+                password: bcrypt.hashSync("test@123", 10),
                 role: "STUDENT"
             }, {
                 name: "Suhaani",
                 email: "suhaani@gmail.com",
                 phoneNumber: "2222222221",
-                password: "test@123",
+                password: bcrypt.hashSync("test@123", 10),
                 role: "STUDENT"
             }, {
                 name: "Zanjabila",
                 email: "zanja@gmail.com",
                 phoneNumber: "2222222223",
-                password: "test@123",
+                password: bcrypt.hashSync("test@123", 10),
                 role: "FACULTY"
             },]
         });
@@ -197,7 +198,7 @@ async function main() {
                 name: "Warden h10a",
                 email: "warden.h10a@gmail.com",
                 phoneNumber: "1111111111",
-                password: "test@123",
+                password: bcrypt.hashSync("test@123", 10),
                 role: "ISSUE_INCHARGE",
                 issueIncharge: {
                     create: {
@@ -227,7 +228,7 @@ async function main() {
                 name: "Warden h12a",
                 email: "warden.h12a@gmail.com",
                 phoneNumber: "1111111112",
-                password: "test@123",
+                password: bcrypt.hashSync("test@123", 10),
                 role: "ISSUE_INCHARGE",
                 issueIncharge: {
                     create: {
@@ -258,7 +259,7 @@ async function main() {
                 name: "Assistant Warden h10a",
                 email: "asstwarden.h10a@gmail.com",
                 phoneNumber: "1111111113",
-                password: "test@123",
+                password: bcrypt.hashSync("test@123", 10),
                 role: "ISSUE_INCHARGE",
                 issueIncharge: {
                     create: {
@@ -288,7 +289,7 @@ async function main() {
                 name: "Assistant Warden h12a",
                 email: "asstwarden.h12a@gmail.com",
                 phoneNumber: "1111111114",
-                password: "test@123",
+                password: bcrypt.hashSync("test@123", 10),
                 role: "ISSUE_INCHARGE",
                 issueIncharge: {
                     create: {
@@ -319,7 +320,7 @@ async function main() {
                 name: "Care Taker h10a",
                 email: "caretaker.h10a@gmail.com",
                 phoneNumber: "1111111115",
-                password: "test@123",
+                password: bcrypt.hashSync("test@123", 10),
                 role: "ISSUE_INCHARGE",
                 issueIncharge: {
                     create: {
@@ -349,7 +350,7 @@ async function main() {
                 name: "Care Taker h12a",
                 email: "caretaker.h12a@gmail.com",
                 phoneNumber: "1111111116",
-                password: "test@123",
+                password: bcrypt.hashSync("test@123", 10),
                 role: "ISSUE_INCHARGE",
                 issueIncharge: {
                     create: {
@@ -380,7 +381,7 @@ async function main() {
                 name: "Cleaner h10a",
                 email: "cleaner.h10a@gmail.com",
                 phoneNumber: "4444444444",
-                password: "test@123",
+                password: bcrypt.hashSync("test@123", 10),
                 role: "RESOLVER",
                 resolver: {
                     create: {
@@ -410,7 +411,7 @@ async function main() {
                 name: "Cleaner h12a",
                 email: "cleaner.h12a@gmail.com",
                 phoneNumber: "4444444445",
-                password: "test@123",
+                password: bcrypt.hashSync("test@123", 10),
                 role: "RESOLVER",
                 resolver: {
                     create: {
