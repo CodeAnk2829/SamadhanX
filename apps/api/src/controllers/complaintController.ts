@@ -757,7 +757,20 @@ export const getComplaintHistory = async (req: any, res: any) => {
                 id: complaintId,
             },
             select: {
-                userId: true
+                userId: true,
+                user: {
+                    select: {
+                        issueIncharge: {
+                            select: {
+                                location: {
+                                    select: {
+                                        locationName: true,
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         });
 
@@ -806,6 +819,11 @@ export const getComplaintHistory = async (req: any, res: any) => {
                         resolver: {
                             select: {
                                 occupation: true,
+                                location: {
+                                    select: {
+                                        locationName: true,
+                                    }
+                                }
                             }
                         }
                     }
@@ -817,9 +835,66 @@ export const getComplaintHistory = async (req: any, res: any) => {
             throw new Error("Couldn't fetch complaint history");
         }
 
+        let response: any[] = [];
+        complaintHistory.forEach((history: any) => {
+            switch (history.eventType) {
+                case "CREATED":
+                    response.push({
+                        createdBy: history.user.name,
+                        createdAt: history.happenedAt
+                    });
+                    break;
+
+                case "ASSIGNED":
+                    response.push({
+                        assignedTo: history.user.name,
+                        designation: history.user.issueIncharge.designation.designation.designationName,
+                        assignedAt: history.happenedAt,
+                        expiredAt: history.complaint.expiredAt
+                    });
+                    break;
+                
+                case "DELEGATED": 
+                    response.push({
+                        delegatedTo: history.user.name,
+                        occupation: history.user.resolver.occupation.occupationName,
+                        delegatedAt: history.happenedAt,
+                        expiredAt: history.complaint.expiredAt
+                    });
+                    break;
+
+                case "ESCALATED":
+                    response.push({
+                        escalatedTo: history.user.name,
+                        designation: history.user.issueIncharge.designation.designation.designationName,
+                        escalatedAt: history.happenedAt,
+                        expiredAt: history.complaint.expiredAt
+                    });
+                    break;
+                
+                case "RESOLVED":
+                    response.push({
+                        resolvedBy: history.user.name,
+                        designation: history.user.issueIncharge.designation.designationName,
+                        resolvedAt: history.happenedAt,
+                    });
+                    break;
+
+                case "CLOSED": 
+                    response.push({
+                        closedBy: history.handledBy,
+                        closedAt: history.happenedAt
+                    });
+                    break;
+            }
+        });
+
         res.status(200).json({
             ok: true,
-            complaintHistory
+            complaintId,
+            title: complaintHistory[0].complaint.title,
+            location: complaintUserDetails.user.issueIncharge?.location.locationName,
+            complaintHistory: response
         });
 
     } catch (err) {
