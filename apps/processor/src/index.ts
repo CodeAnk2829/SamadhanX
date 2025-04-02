@@ -1,6 +1,6 @@
 import { prisma } from "@repo/db/client";
 import { RedisClient } from "@repo/redis/client";
-import { CREATED, CLOSED, DELEGATED, DELETED, ESCALATED, RESOLVED, UPDATED, UPVOTED } from "@repo/types/wsMessageTypes";
+import { CREATED, CLOSED, DELEGATED, DELETED, ESCALATED, RESOLVED, UPDATED, UPVOTED, RECREATED } from "@repo/types/wsMessageTypes";
 import { Datetime } from "aws-sdk/clients/costoptimizationhub";
 
 async function main() {
@@ -203,6 +203,7 @@ async function processWithExponentialBackOff(event: any, redisClient: RedisClien
                     }
 
                     break;
+
                 case  "complaint_closed": 
                     const closurePayload = event.payload as unknown as ClosedComplaintPayload;
 
@@ -487,6 +488,74 @@ async function processWithExponentialBackOff(event: any, redisClient: RedisClien
                     
                     break;
                 
+                case "complaint_recreated":
+                    console.log("Entered into complaint-recreated case");
+                    const recreationPayload = event.payload as unknown as CreateComplaintPayload;
+
+                    // first check whether this event has already published
+                    const isRecreatedEventPublished = await prisma.processedEvent.findUnique({
+                        where: { eventId: idemPotencyKey }
+                    });
+
+                    if (!isRecreatedEventPublished) {
+                        // publish this event to 'recreation' channel
+                        await redisClient.publish("recreation", JSON.stringify({
+                            idemPotencyKey, // apply idempotency to avoid duplicate publication
+                            type: RECREATED,
+                            data: {
+                                complaintId: recreationPayload.complaintId,
+                                complainerId: recreationPayload.complainerId,
+                                access: recreationPayload.access,
+                                title: recreationPayload.title,
+                                isAssignedTo: recreationPayload.isAssignedTo,
+                            }
+                        }));
+
+                        const storeProcessedEvent = await prisma.processedEvent.create({
+                            data: {
+                                eventId: idemPotencyKey,
+                                processedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000))
+                            }
+                        });
+
+                        if (!storeProcessedEvent) {
+                            throw new Error("Could not store the processed event. Retrying...");
+                        }
+                    }
+
+                    const scheduleEscalationAfterRecreation = prisma.complaintOutbox.create({
+                        data: {
+                            eventType: "complaint_escalation_due",
+                            payload: {
+                                complaintId: recreationPayload.complaintId,
+                                title: recreationPayload.title,
+                                inchargeId: recreationPayload.isAssignedTo,
+                                locationId: recreationPayload.locationId,
+                                rank: recreationPayload.rank
+                            },
+                            status: "PENDING",
+                            processAfter: recreationPayload.escalation_due_at
+                        }
+                    });
+
+
+                    const markRecreationAsProcessed = prisma.complaintOutbox.update({
+                        where: {
+                            id: event.id,
+                        },
+                        data: {
+                            status: "PROCESSED"
+                        }
+                    });
+
+                    const success = await prisma.$transaction([scheduleEscalationAfterRecreation, markRecreationAsProcessed]);
+
+                    if (!success) {
+                        throw new Error("Escalation Schedule failed. Retrying...");
+                    }
+
+                    break;
+
                 case "complaint_resolved":
                     console.log("Entered into complaint_resolved case");
 

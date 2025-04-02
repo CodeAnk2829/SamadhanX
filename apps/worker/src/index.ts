@@ -212,6 +212,27 @@ async function startWorker() {
                             throw new Error("Could not mark the complaint status as closed.");
                         }
 
+                        const markClosureDueAsProcessed = await tx.complaintOutbox.updateMany({
+                            where: {
+                                AND: [
+                                    { eventType: "complaint_closure_due" },
+                                    {
+                                        payload: {
+                                            path: ['complaintId'],
+                                            equals: jsonData.complaintId
+                                        }
+                                    }
+                                ]
+                            },
+                            data: {
+                                status: "PROCESSED"
+                            }
+                        });
+
+                        if (!markClosureDueAsProcessed) {
+                            throw new Error("Could not mark complaint closure due as processed");
+                        }
+
                         const outboxDetails = await tx.complaintOutbox.create({
                             data: {
                                 eventType: "complaint_closed",

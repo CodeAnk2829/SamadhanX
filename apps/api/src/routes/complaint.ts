@@ -1,6 +1,6 @@
 import Router from "express";
 import { authMiddleware, authorizeMiddleware } from "../middleware/auth";
-import { closeComplaint, createComplaint, deletedComplaintById, getAllComplaints, getComplaintById, getComplaintHistory, getUsersComplaints, updateComplaintById, upvoteComplaint } from "../controllers/complaintController";
+import { closeComplaint, createComplaint, deletedComplaintById, getAllComplaints, getComplaintById, getComplaintHistory, getUsersComplaints, recreateComplaint, updateComplaintById, upvoteComplaint } from "../controllers/complaintController";
 
 const router = Router();
 
@@ -14,6 +14,7 @@ enum Role {
 router.post("/create", authMiddleware, authorizeMiddleware(Role), createComplaint); // create a complaint
 router.post("/upvote/:id", authMiddleware, authorizeMiddleware(Role), upvoteComplaint); // upvote a complaint
 router.post("/close", authMiddleware, authorizeMiddleware(Role), closeComplaint); // close a complaint
+router.post("/recreate/:id", authMiddleware, authorizeMiddleware(Role), recreateComplaint); // recreate a complaint by id
 
 // READ
 router.get("/get/all-complaints", authMiddleware, authorizeMiddleware(Role), getAllComplaints); // get all complaints
