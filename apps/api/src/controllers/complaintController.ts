@@ -1,6 +1,6 @@
 import { prisma } from "@repo/db/client";
 import { CreateComplaintSchema, UpdateComplaintSchema } from "@repo/types/complaintTypes";
-import {  UPDATED, UPVOTED, DELETED } from "@repo/types/wsMessageTypes";
+import { UPDATED, UPVOTED, DELETED } from "@repo/types/wsMessageTypes";
 import { RedisManager } from "../util/RedisManager";
 
 export const createComplaint = async (req: any, res: any) => {
@@ -79,6 +79,13 @@ export const createComplaint = async (req: any, res: any) => {
                     },
                     complaintResolution: {
                         create: {}
+                    },
+                    feedback: {
+                        create: {
+                            mood: "",
+                            remarks: "",
+                            givenAt: new Date(currentDateTime)
+                        }
                     },
                     user: {
                         connect: {
@@ -181,7 +188,7 @@ export const createComplaint = async (req: any, res: any) => {
             return complaintDetails;
         });
 
-        
+
         if (!createComplaint) {
             throw new Error("Could not create complaint. Please try again");
         }
@@ -234,6 +241,139 @@ export const createComplaint = async (req: any, res: any) => {
     }
 }
 
+export const closeComplaint = async (req: any, res: any) => {
+    try {
+        const { complaintId, mood, remarks } = req.body;
+        const userId = req.user.id;
+
+        // check whether this complaint belong to the logged in user
+        const complaintDetails = await prisma.complaint.findUnique({
+            where: {
+                id: complaintId
+            },
+            select: {
+                userId: true,
+                status: true,
+            }
+        });
+
+        if (!complaintDetails) {
+            throw new Error("Could not fetch complaint details.");
+        }
+
+        if (complaintDetails.userId !== userId) {
+            throw new Error("Access denied");
+        }
+
+        if (complaintDetails.status !== "RESOLVED") {
+            throw new Error("Complaint is not supposed to be closed at this state.");
+        }
+
+        const complaintClosed = await prisma.$transaction(async (tx) => {
+            const closeComplaint = await tx.complaint.update({
+                where: {
+                    id: complaintId,
+                },
+                data: {
+                    status: "CLOSED",
+                    complaintHistory: {
+                        create: {
+                            eventType: "CLOSED",
+                            handledBy: userId,
+                            happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                        }
+                    },
+                    feedback: {
+                        update: {
+                            mood,
+                            remarks,
+                            givenAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                        }
+                    },
+                    closedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                },
+                include: {
+                    feedback: true,
+                    complaintAssignment: {
+                        include: {
+                            user: true,
+                        }
+                    },
+                }
+            });
+
+            if (!closeComplaint) {
+                throw new Error("Could not close the complaint.");
+            }
+
+            const markClosureDueAsProcessed = await tx.complaintOutbox.updateMany({
+                where: {
+                    AND: [
+                        { eventType: "complaint_closure_due" },
+                        {
+                            payload: {
+                                path: ['complaintId'],
+                                equals: complaintId
+                            }
+                        }
+                    ]
+                },
+                data: {
+                    status: "PROCESSED"
+                }
+            });
+
+            if (!markClosureDueAsProcessed) {
+                throw new Error("Could not mark complaint closure due as processed");
+            }
+
+            const outboxDetails = await tx.complaintOutbox.create({
+                data: {
+                    eventType: "complaint_closed",
+                    payload: {
+                        complaintId: closeComplaint.id,
+                        complainerId: closeComplaint.userId,
+                        isAssignedTo: closeComplaint.complaintAssignment?.user?.id,
+                        access: closeComplaint.access,
+                        title: closeComplaint.title,
+                        closedAt: closeComplaint.closedAt,
+                        feedback: {
+                            id: closeComplaint.feedback?.id,
+                            mood: closeComplaint.feedback?.mood,
+                            remarks: closeComplaint.feedback?.remarks,
+                            givenAt: closeComplaint.feedback?.givenAt
+                        }
+                    },
+                    status: "PENDING",
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                }
+            });
+
+            if (!outboxDetails) {
+                throw new Error("Could not create outbox details.");
+            }
+
+            return closeComplaint;
+        });
+
+        if (!complaintClosed) {
+            throw new Error("Could not close the complaint.");
+        }
+
+        res.status(200).json({
+            ok: true,
+            message: "Complaint closed successfully.",
+            complaintClosed,
+        });
+
+    } catch (err) {
+        res.status(400).json({
+            ok: false,
+            error: err instanceof Error ? err.message : "An error occurred while closing the complaint."
+        });
+    }
+}
+
 export const deletedComplaintById = async (req: any, res: any) => {
     try {
         const complaintId = req.params.id;
@@ -256,9 +396,9 @@ export const deletedComplaintById = async (req: any, res: any) => {
         const deletedComplaint = await prisma.$transaction(async (tx: any) => {
             const complaintDeletion = await tx.complaint.delete({
                 where: { id: complaintId },
-                select: { 
+                select: {
                     id: true,
-                    title: true, 
+                    title: true,
                     access: true,
                     userId: true,
                     complaintAssignment: {
@@ -275,6 +415,19 @@ export const deletedComplaintById = async (req: any, res: any) => {
 
             if (!complaintDeletion) {
                 throw new Error("Deletion request failed.");
+            }
+
+            const updateComplaintHistory = await tx.complaintHistory.create({
+                data: {
+                    complaintId,
+                    eventType: "DELETED",
+                    handledBy: currentUserId,
+                    happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                }
+            });
+
+            if (!updateComplaintHistory) {
+                throw new Error("Could not update complaint history");
             }
 
             const outboxDetails = await tx.complaintOutbox.create({
@@ -298,7 +451,7 @@ export const deletedComplaintById = async (req: any, res: any) => {
 
             return complaintDeletion;
         });
-        
+
 
         if (!deletedComplaint) {
             throw new Error("Could not delete complaint. Please try again.");
@@ -314,6 +467,258 @@ export const deletedComplaintById = async (req: any, res: any) => {
         res.status(400).json({
             ok: false,
             error: err instanceof Error ? err.message : "An error occurred while deleting the complaint."
+        });
+    }
+}
+
+export const recreateComplaint = async (req: any, res: any) => {
+    try {
+        const complaintId = req.params.id;
+        const currentUserId = req.user.id;
+
+        // check if the current user is the one who had raised this complaint earlier
+        const relatedUserAndStatusDetails = await prisma.complaint.findUnique({
+            where: { id: complaintId },
+            select: { 
+                userId: true,
+                status: true,
+                complaintAssignment: {
+                    select: {
+                        user: {
+                            select: {
+                                issueIncharge: {
+                                    select: {
+                                        locationId: true,
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (!relatedUserAndStatusDetails) {
+            throw new Error("No complaint found with the given id");
+        }
+
+        if (relatedUserAndStatusDetails.userId !== currentUserId) {
+            throw new Error("Access Denied. You do not have permissions to recreate this complaint.");
+        }
+
+        if (relatedUserAndStatusDetails.status !== "RESOLVED") {
+            throw new Error("Complaint cannot be recreated at this stage.");
+        }
+
+        // find the least ranked incharge of the hostel of the given location
+        const issueIncharge = await prisma.issueIncharge.findFirst({
+            where: {
+                locationId: relatedUserAndStatusDetails.complaintAssignment?.user?.issueIncharge?.locationId
+            },
+            orderBy: {
+                designation: {
+                    rank: "desc"
+                }
+            },
+            select: {
+                inchargeId: true
+            }
+        });
+
+        if (!issueIncharge) {
+            throw new Error("No incharge found for the given location");
+        }
+
+        const currentDateTime = Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000);
+
+        const complaintRecreation = await prisma.$transaction(async (tx) => {
+            const complaintDetails = await tx.complaint.update({
+                where: {
+                    id: complaintId,
+                }, 
+                data: {
+                    status: "RECREATED",
+                    complaintAssignment: {
+                        update: {
+                            assignedTo: issueIncharge.inchargeId,
+                            assignedAt: new Date(currentDateTime).toISOString()
+                        }
+                    },
+                    complaintHistory: {
+                        createMany: {
+                            data: [
+                                {
+                                    eventType: "RECREATED",
+                                    handledBy: req.user.id,
+                                    happenedAt: new Date(currentDateTime)
+                                },
+                                {
+                                    eventType: "ASSIGNED",
+                                    handledBy: issueIncharge.inchargeId,
+                                    happenedAt: new Date(currentDateTime)
+                                }
+                            ]
+                        }
+                    },
+                    updatedAt: new Date(currentDateTime).toISOString(),
+                    expiredAt: new Date(currentDateTime + 2 * 60 * 1000).toISOString() // 7 days from now
+                },
+                include: {
+                    attachments: {
+                        select: {
+                            id: true,
+                            imageUrl: true
+                        }
+                    },
+                    tags: {
+                        select: {
+                            tags: {
+                                select: {
+                                    tagName: true
+                                }
+                            }
+                        }
+                    },
+                    user: {
+                        select: {
+                            id: true,
+                            name: true,
+                        }
+                    },
+                    complaintAssignment: {
+                        select: {
+                            assignedAt: true,
+                            user: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    phoneNumber: true,
+                                    issueIncharge: {
+                                        select: {
+                                            designation: {
+                                                select: {
+                                                    designation: {
+                                                        select: {
+                                                            designationName: true,
+                                                        }
+                                                    },
+                                                    rank: true,
+                                                }
+                                            },
+                                            location: {
+                                                select: {
+                                                    id: true,
+                                                    locationName: true,
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                }
+            });
+
+            if (!complaintDetails) {
+                throw new Error("Complaint could not be recreated.");
+            }
+
+            const outboxDetails = await tx.complaintOutbox.create({
+                data: {
+                    eventType: "complaint_recreated",
+                    payload: {
+                        complaintId: complaintDetails.id,
+                        complainerId: complaintDetails.userId,
+                        access: complaintDetails.access,
+                        title: complaintDetails.title,
+                        isAssignedTo: complaintDetails.complaintAssignment?.user?.id,
+                        escalation_due_at: complaintDetails.expiredAt,
+                        locationId: complaintDetails.complaintAssignment?.user?.issueIncharge?.location.id,
+                        rank: complaintDetails.complaintAssignment?.user?.issueIncharge?.designation.rank,
+                    },
+                    status: "PENDING",
+                    processAfter: new Date(currentDateTime).toISOString()
+                }
+            });
+
+            if (!outboxDetails) {
+                throw new Error("Could not create outbox details.");
+            }
+
+            const markClosureDueAsProcessed = await tx.complaintOutbox.updateMany({
+                where: {
+                    AND: [
+                        { eventType: "complaint_closure_due" },
+                        {
+                            payload: {
+                                path: ['complaintId'],
+                                equals: complaintId
+                            }
+                        }
+                    ]
+                },
+                data: {
+                    status: "PROCESSED"
+                }
+            });
+
+            if (!markClosureDueAsProcessed) {
+                throw new Error("Could not mark complaint closure due as processed");
+            }
+
+            return complaintDetails;
+        });
+        
+        if (!complaintRecreation) {
+            throw new Error("Could not recreate the complaint.");
+        }
+
+        const tagNames = complaintRecreation.tags.map((tag: any) => tag.tags.tagName);
+        const attachments = complaintRecreation.attachments.map((attachment: any) => attachment.imageUrl);
+
+        let complaintResponse = complaintRecreation;
+
+        if (complaintRecreation.postAsAnonymous) {
+            complaintResponse = {
+                ...complaintRecreation,
+                user: {
+                    id: complaintRecreation.user.id,
+                    name: "Anonymous",
+                }
+            }
+        }
+
+        res.status(201).json({
+            ok: true,
+            message: "Complaint recreated successfully",
+            complaintId: complaintResponse.id,
+            title: complaintResponse.title,
+            description: complaintResponse.description,
+            access: complaintResponse.access,
+            postAsAnonymous: complaintResponse.postAsAnonymous,
+            userName: complaintResponse.user.name,
+            userId: complaintResponse.user.id,
+            status: complaintResponse.status,
+            inchargeId: issueIncharge.inchargeId,
+            inchargeName: complaintResponse.complaintAssignment?.user?.name,
+            inchargeDesignation: complaintResponse.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
+            inchargeRank: complaintResponse.complaintAssignment?.user?.issueIncharge?.designation.rank,
+            location: complaintResponse.complaintAssignment?.user?.issueIncharge?.location.locationName,
+            assignedAt: complaintResponse.complaintAssignment?.assignedAt,
+            upvotes: complaintResponse.totalUpvotes,
+            actionTaken: complaintResponse?.actionTaken,
+            attachments: attachments,
+            tags: tagNames,
+            createdAt: complaintResponse.createdAt,
+            recreatedAt: complaintResponse.updatedAt,
+            expiredAt: complaintResponse.expiredAt
+        });
+
+    } catch (err) {
+        res.status(400).json({
+            ok: false,
+            error: err instanceof Error ? err.message : "An error occurred while recreating the complaint."
         });
     }
 }
@@ -464,7 +869,7 @@ export const getComplaintById = async (req: any, res: any) => {
 
         const userRole = req.user.role;
 
-        if(userRole === "ISSUE_INCHARGE") {
+        if (userRole === "ISSUE_INCHARGE") {
             // check whether the complaint is assigned to the current incharge
             const assignedComplaint = await prisma.complaint.findFirst({
                 where: {
@@ -478,10 +883,10 @@ export const getComplaintById = async (req: any, res: any) => {
                 }
             });
 
-            if(!assignedComplaint) {
+            if (!assignedComplaint) {
                 throw new Error("Unauthorized. You are not assigned to this complaint");
             }
-        } 
+        }
 
         const complaint = await prisma.complaint.findUnique({
             where: {
@@ -625,7 +1030,20 @@ export const getComplaintHistory = async (req: any, res: any) => {
                 id: complaintId,
             },
             select: {
-                userId: true
+                userId: true,
+                user: {
+                    select: {
+                        issueIncharge: {
+                            select: {
+                                location: {
+                                    select: {
+                                        locationName: true,
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         });
 
@@ -674,6 +1092,11 @@ export const getComplaintHistory = async (req: any, res: any) => {
                         resolver: {
                             select: {
                                 occupation: true,
+                                location: {
+                                    select: {
+                                        locationName: true,
+                                    }
+                                }
                             }
                         }
                     }
@@ -685,12 +1108,69 @@ export const getComplaintHistory = async (req: any, res: any) => {
             throw new Error("Couldn't fetch complaint history");
         }
 
-        res.status(200).json({
-            ok: true,
-            complaintHistory
+        let response: any[] = [];
+        complaintHistory.forEach((history: any) => {
+            switch (history.eventType) {
+                case "CREATED":
+                    response.push({
+                        createdBy: history.user.name,
+                        createdAt: history.happenedAt
+                    });
+                    break;
+
+                case "ASSIGNED":
+                    response.push({
+                        assignedTo: history.user.name,
+                        designation: history.user.issueIncharge.designation.designation.designationName,
+                        assignedAt: history.happenedAt,
+                        expiredAt: history.complaint.expiredAt
+                    });
+                    break;
+                
+                case "DELEGATED": 
+                    response.push({
+                        delegatedTo: history.user.name,
+                        occupation: history.user.resolver.occupation.occupationName,
+                        delegatedAt: history.happenedAt,
+                        expiredAt: history.complaint.expiredAt
+                    });
+                    break;
+
+                case "ESCALATED":
+                    response.push({
+                        escalatedTo: history.user.name,
+                        designation: history.user.issueIncharge.designation.designation.designationName,
+                        escalatedAt: history.happenedAt,
+                        expiredAt: history.complaint.expiredAt
+                    });
+                    break;
+                
+                case "RESOLVED":
+                    response.push({
+                        resolvedBy: history.user.name,
+                        designation: history.user.issueIncharge.designation.designationName,
+                        resolvedAt: history.happenedAt,
+                    });
+                    break;
+
+                case "CLOSED": 
+                    response.push({
+                        closedBy: history.handledBy,
+                        closedAt: history.happenedAt
+                    });
+                    break;
+            }
         });
 
-    } catch(err) {
+        res.status(200).json({
+            ok: true,
+            complaintId,
+            title: complaintHistory[0].complaint.title,
+            location: complaintUserDetails.user.issueIncharge?.location.locationName,
+            complaintHistory: response
+        });
+
+    } catch (err) {
         res.status(400).json({
             ok: false,
             error: err instanceof Error ? err.message : "An error occurred while fetching the complaint history.",
@@ -799,7 +1279,7 @@ export const getUsersComplaints = async (req: any, res: any) => {
                 expiredAt: complaint.expiredAt,
             }
         });
-        
+
         res.status(200).json({
             ok: true,
             complaintDetails,
@@ -816,7 +1296,6 @@ export const getUsersComplaints = async (req: any, res: any) => {
 
 export const updateComplaintById = async (req: any, res: any) => {
     try {
-        const redisClient = RedisManager.getInstance();
         const body = req.body; // { title: string, description: string, access: string, postAsAnonymous: boolean, tags: Array<Int>, attachments: Array<String> }
         const parseData = UpdateComplaintSchema.safeParse(body);
         const complaintId = req.params.id;
@@ -947,7 +1426,7 @@ export const updateComplaintById = async (req: any, res: any) => {
                     },
                 }
             });
-    
+
             if (!updateComplaint) {
                 throw new Error("Could not create complaint. Please try again");
             }
@@ -976,10 +1455,10 @@ export const updateComplaintById = async (req: any, res: any) => {
             if (!outboxDetails) {
                 throw new Error("Could not create complaint_update details in outbox.");
             }
-            
+
             return updateComplaint;
         });
-        
+
 
         // check whether this user has upvoted this complaint
         let hasUpvoted: boolean = false;
@@ -1058,7 +1537,7 @@ export const upvoteComplaint = async (req: any, res: any) => {
         // first check an user has already upvoted
         const hasUpvoted = await prisma.upvote.findFirst({
             where: { userId, complaintId },
-            select: { 
+            select: {
                 id: true,
                 complaint: {
                     select: {
@@ -1119,7 +1598,7 @@ export const upvoteComplaint = async (req: any, res: any) => {
                     }
                 }
             });
-    
+
             if (!upvoteComplaint) {
                 throw new Error("Could not upvote the complaint");
             }

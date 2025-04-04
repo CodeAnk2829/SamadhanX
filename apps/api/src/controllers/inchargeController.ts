@@ -127,7 +127,14 @@ export const delegateComplaint = async (req: any, res: any) => {
                 },
                 data: {
                     status: "DELEGATED",
-                    actionTaken: true
+                    actionTaken: true,
+                    complaintHistory: {
+                        create: {
+                            eventType: "DELEGATED",
+                            handledBy: resolverId,
+                            happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                        }
+                    },
                 }
             })
 
@@ -248,11 +255,9 @@ export const escalateComplaint = async (req: any, res: any) => {
             }
         })
 
-
         if (!complaintDetails) {
             throw new Error("Could not find complaint details.");
         }
-
 
         // check whether this complaint is assigned to currently logged in incharge
         if (complaintDetails.complaintAssignment?.user?.id !== currentIncharge.id) {
@@ -306,6 +311,13 @@ export const escalateComplaint = async (req: any, res: any) => {
                         update: {
                             assignedTo: nextIncharge.incharge.id,
                             assignedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                        }
+                    },
+                    complaintHistory: {
+                        create: {
+                            eventType: "ESCALATED",
+                            handledBy: nextIncharge.incharge.id,
+                            happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
                     expiredAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString() // 2 mins after current time
@@ -598,7 +610,8 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
                         resolvedBy: true,
                         resolvedAt: true,
                     }
-                }
+                },
+                feedback: true
             }
         });
 
@@ -655,7 +668,14 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
                 },
                 data: {
                     status: "RESOLVED",
-                    actionTaken: true
+                    actionTaken: true,
+                    complaintHistory: {
+                        create: {
+                            eventType: "RESOLVED",
+                            handledBy: currentInchargeId,
+                            happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                        }
+                    },
                 }
             });
 
@@ -663,8 +683,8 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
                 throw new Error("Could not mark the complaint as resolved");
             }
 
-            const outboxDetails = await tx.complaintOutbox.create({
-                data: {
+            const outboxDetails = await tx.complaintOutbox.createMany({
+                data: [{
                     eventType: "complaint_resolved",
                     payload: {
                         complaintId,
@@ -678,7 +698,25 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
                     },
                     status: "PENDING",
                     processAfter: new Date(Date.now())
-                }
+                }, {
+                        eventType: "complaint_closure_due",
+                        payload: {
+                            complaintId,
+                            complainerId: complaintResolution.complaint.userId,
+                            isAssignedTo: complaintDetails.complaintAssignment?.user?.id,
+                            access: complaintDetails.access,
+                            title: complaintDetails.title,
+                            closedAt: complaintDetails.closedAt,
+                            feedback: {
+                                id: complaintDetails.feedback?.id,
+                                mood: complaintDetails.feedback?.mood,
+                                remarks: complaintDetails.feedback?.remarks,
+                                givenAt: complaintDetails.feedback?.givenAt,
+                            }
+                        },
+                        status: "PENDING",
+                        processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString()
+                    }]
             });
 
             if (!outboxDetails) {
@@ -716,7 +754,7 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
 
         const complaintResolutionDetails = {
             complaintId,
-            status: resolvedComplaint.complaint.status,
+            status: "RESOLVED",
             resolvedBy: resolvedComplaint.user,
             resolvedAt: resolvedComplaint.resolvedAt
         }

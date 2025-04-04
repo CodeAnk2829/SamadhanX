@@ -44,6 +44,7 @@ model Complaint {
   actionTaken         Boolean              @default(false)
   totalUpvotes        Int                  @default(0)
   createdAt           DateTime             @default(now())
+  closedAt            DateTime             @default(now())
   expiredAt           DateTime
   updatedAt           DateTime             @updatedAt
   userId              String
@@ -52,7 +53,7 @@ model Complaint {
   complaintDelegation ComplaintDelegation?
   complaintHistory    ComplaintHistory[]
   complaintResolution ComplaintResolution?
-  feedbacks           Feedback[]
+  feedback            Feedback?
   notification        Notification[]
   tags                ComplaintCategory[]
   attachments         Attachment[]
@@ -126,7 +127,7 @@ model ComplaintHistory {
   complaintId String
   complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
   handledBy   String?
-  user        User?     @relation(fields: [handledBy], references: [id], onDelete: SetNull)
+  user        User?    @relation(fields: [handledBy], references: [id], onDelete: SetNull)
   eventType   String
   happenedAt  DateTime
 }
@@ -149,10 +150,10 @@ model DesignationTag {
 
 model Feedback {
   id          String    @id @default(uuid())
-  complaintId String
+  complaintId String    @unique
   complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
-  rating      Float
-  comments    String
+  mood        String
+  remarks     String
   givenAt     DateTime
 }
 
@@ -252,6 +253,7 @@ enum Status {
   DELEGATED
   ESCALATED
   PENDING
+  RECREATED
   RESOLVED
   UNRESOLVED
 }
