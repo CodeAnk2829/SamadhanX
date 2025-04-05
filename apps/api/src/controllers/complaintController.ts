@@ -1,6 +1,6 @@
 import { prisma } from "@repo/db/client";
 import { CreateComplaintSchema, UpdateComplaintSchema } from "@repo/types/complaintTypes";
-import { UPDATED, UPVOTED, DELETED } from "@repo/types/wsMessageTypes";
+import { UPDATED, UPVOTED, DELETED, CREATED, ASSIGNED, CLOSED, RECREATED } from "@repo/types/wsMessageTypes";
 import { RedisManager } from "../util/RedisManager";
 
 export const createComplaint = async (req: any, res: any) => {
@@ -163,6 +163,31 @@ export const createComplaint = async (req: any, res: any) => {
                 throw new Error("Could not create complaint. Please try again");
             }
 
+            const notifyUserAboutCreationAndAssignment = await tx.notification.createMany({
+                data: [{
+                    userId: req.user.id,
+                    eventType: CREATED,
+                    payload: {
+                        complaintId: complaintDetails.id,
+                        title: complaintDetails.title,
+                    },
+                    createdAt: new Date(currentDateTime).toISOString()
+                }, {
+                    userId: req.user.id,
+                    eventType: ASSIGNED,
+                    payload: {
+                        complaintId: complaintDetails.id,
+                        title: complaintDetails.title,
+                        isAssignedTo: complaintDetails.complaintAssignment.user.name,
+                        designation: complaintDetails.complaintAssignment.user.issueIncharge.designation.designation.designationName,
+                    }
+                }]
+            });
+
+            if (!notifyUserAboutCreationAndAssignment) {
+                throw new Error("Could not notify user about complaint creation and assignment.");
+            }
+            
             const outboxDetails = await tx.complaintOutbox.create({
                 data: {
                     eventType: "complaint_created",
@@ -252,6 +277,7 @@ export const closeComplaint = async (req: any, res: any) => {
                 id: complaintId
             },
             select: {
+                title: true,
                 userId: true,
                 status: true,
             }
@@ -325,6 +351,22 @@ export const closeComplaint = async (req: any, res: any) => {
 
             if (!markClosureDueAsProcessed) {
                 throw new Error("Could not mark complaint closure due as processed");
+            }
+
+            const notifyUserAboutClosure = await tx.notification.create({
+                data: {
+                    userId,
+                    eventType: CLOSED,
+                    payload: {
+                        complaintId,
+                        title: complaintDetails.title,
+                    },
+                    createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                }
+            });
+
+            if (!notifyUserAboutClosure) {
+                throw new Error("Could not notify user about complaint closure");
             }
 
             const outboxDetails = await tx.complaintOutbox.create({
@@ -430,6 +472,19 @@ export const deletedComplaintById = async (req: any, res: any) => {
                 throw new Error("Could not update complaint history");
             }
 
+            const deleteComplaintFromNotification = await tx.notification.deleteMany({
+                where: {
+                    payload: {
+                        path: ['complaintId'],
+                        equals: complaintId
+                    }
+                }
+            });
+
+            if (!deleteComplaintFromNotification) {
+                throw new Error("Could not delete all notifications of a complaint.");
+            }
+
             const outboxDetails = await tx.complaintOutbox.create({
                 data: {
                     eventType: "complaint_deleted",
@@ -480,6 +535,7 @@ export const recreateComplaint = async (req: any, res: any) => {
         const relatedUserAndStatusDetails = await prisma.complaint.findUnique({
             where: { id: complaintId },
             select: { 
+                title: true,
                 userId: true,
                 status: true,
                 complaintAssignment: {
@@ -622,6 +678,24 @@ export const recreateComplaint = async (req: any, res: any) => {
 
             if (!complaintDetails) {
                 throw new Error("Complaint could not be recreated.");
+            }
+
+            const notifyUserAboutRecreation = await tx.notification.create({
+                data: {
+                    userId: currentUserId,
+                    eventType: RECREATED,
+                    payload: {
+                        complaintId,
+                        title: relatedUserAndStatusDetails.title,
+                        isAssignedTo: complaintDetails.complaintAssignment?.user?.name,
+                        designation: complaintDetails.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
+                    },
+                    createdAt: new Date(currentDateTime).toISOString()
+                }
+            });
+
+            if (!notifyUserAboutRecreation) {
+                throw new Error("Could not notify user about complaint recreation.");
             }
 
             const outboxDetails = await tx.complaintOutbox.create({

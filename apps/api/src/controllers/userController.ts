@@ -155,6 +155,49 @@ export const signout = async (req: any, res: any) => {
     }
 }
 
+export const getUserNotification = async (req: any, res: any) => {
+    try {
+        const { eventType } = req.query;
+        const userId = req.user.id;
+
+        console.log("eventType: ", eventType.toUpperCase());
+
+        if (!eventType) {
+            throw new Error("No query string provided.");
+        }
+        
+        // get user's notifications
+        let notifications = await prisma.notification.findMany({
+            where: { 
+                userId
+            },
+            orderBy: {
+                createdAt: "desc"
+            }
+        });
+        
+        if (!notifications) {
+            throw new Error("Could not fetch notifications.");
+        }
+
+        if (eventType.toUpperCase() !== "ALL") {
+            notifications = notifications.filter(x => x.eventType === eventType.toUpperCase());
+        }
+
+        res.status(200).json({
+            ok: true,
+            message: "Notification fetched successfully",
+            notifications
+        });
+
+    } catch (err) {
+        res.status(400).json({
+            ok: false,
+            error: err instanceof Error ? err.message : "An error occurred while fetching notifications"
+        });
+    }
+}
+
 export const getUserProfile = async (req: any, res: any) => {
     try {
         const userId = req.user.id;

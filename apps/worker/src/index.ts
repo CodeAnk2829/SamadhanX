@@ -25,7 +25,7 @@ async function startWorker() {
                 const jsonData = JSON.parse(result as string);
 
                 if (jsonData.eventType === "escalation") {
-                    // find the next incharge
+                    // find the next incharge location-wise
                     const nextIncharge = await prisma.issueIncharge.findFirst({
                         where: {
                             locationId: jsonData.locationId,
@@ -142,6 +142,24 @@ async function startWorker() {
                             throw new Error("escalation failed");
                         }
 
+                        const notifyUserAboutEscalation = await tx.notification.create({
+                            data: {
+                                userId: escalatedComplaint.userId,
+                                eventType: "ESCALATED",
+                                payload: {
+                                    complaintId: escalatedComplaint.id,
+                                    title: escalatedComplaint.title,
+                                    isEscalatedTo: escalatedComplaint.complaintAssignment?.user?.name,
+                                    designation: escalatedComplaint.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
+                                },
+                                createdAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                            }
+                        });
+
+                        if (!notifyUserAboutEscalation) {
+                            throw new Error("Could not notify user about escalation");
+                        }
+
                         const storeComplaintToPublishEscalation = await tx.complaintOutbox.createMany({
                             data: [{
                                 eventType: "complaint_escalated",
@@ -231,6 +249,22 @@ async function startWorker() {
 
                         if (!markClosureDueAsProcessed) {
                             throw new Error("Could not mark complaint closure due as processed");
+                        }
+
+                        const notifyUserAboutClosure = await tx.notification.create({
+                            data: {
+                                userId: jsonData.complainerId,
+                                eventType: "CLOSED",
+                                payload: {
+                                    complaintId: jsonData.complaintId,
+                                    title: jsonData.title,
+                                },
+                                createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                            }
+                        });
+
+                        if (!notifyUserAboutClosure) {
+                            throw new Error("Could not notify user about complaint closure");
                         }
 
                         const outboxDetails = await tx.complaintOutbox.create({

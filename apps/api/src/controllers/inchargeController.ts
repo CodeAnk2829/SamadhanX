@@ -1,9 +1,10 @@
 import { prisma } from "@repo/db/client";
 import { DelegateSchema } from "@repo/types/inchargeTypes";
 import { RedisManager } from "../util/RedisManager";
-import { DELEGATED, ESCALATED } from "@repo/types/wsMessageTypes";
+import { DELEGATED, ESCALATED, RESOLVED } from "@repo/types/wsMessageTypes";
 import { complaintRouter } from "../routes/complaint";
 import { sendSMS } from "@repo/twilio/sendSms";
+import { ECS } from "aws-sdk";
 
 export const delegateComplaint = async (req: any, res: any) => {
     try {
@@ -140,6 +141,26 @@ export const delegateComplaint = async (req: any, res: any) => {
 
             if (!updateComplaintAsDelegated) {
                 throw new Error("Could not update complaint status as delegated.");
+            }
+
+            const notifyUserAboutDelegation = await tx.notification.create({
+                data: {
+                    userId: complaintDetails.userId,
+                    eventType: DELEGATED,
+                    payload: {
+                        complaintId: complaintDetails.id,
+                        title: complaintDetails.title,
+                        delegatedTo: complaintDelegation.user?.name,
+                        delegatedBy: currentInchargeId,
+                        occupation: complaintDelegation.user?.resolver?.occupation?.occupationName,
+                        designation: complaintDetails.complaintAssignment?.user?.issueIncharge?.designation?.designation?.designationName,
+                    },
+                    createdAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                }
+            });
+
+            if (!notifyUserAboutDelegation) {
+                throw new Error("Could not notify user about delegation");
             }
 
             const outboxDetails = await tx.complaintOutbox.create({
@@ -380,6 +401,24 @@ export const escalateComplaint = async (req: any, res: any) => {
 
             if (!complaintEscalation) {
                 throw new Error("Could not escalate a complaint");
+            }
+            
+            const notifyUserAboutEscalation = await tx.notification.create({
+                data: {
+                    userId: complaintEscalation.userId,
+                    eventType: ESCALATED,
+                    payload: {
+                        complaintId: complaintEscalation.id,
+                        title: complaintEscalation.title,
+                        isEscalatedTo: complaintEscalation.complaintAssignment?.user?.name,
+                        designation: complaintEscalation.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
+                    },
+                    createdAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                }
+            });
+
+            if (!notifyUserAboutEscalation) {
+                throw new Error("Could not notify user about escalation");
             }
 
             const markEscalationDueAsProcessed = await tx.complaintOutbox.updateMany({
@@ -681,6 +720,24 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
 
             if (!markAsResolved) {
                 throw new Error("Could not mark the complaint as resolved");
+            }
+
+            const notifyUserAboutResolution = await tx.notification.create({
+                data: {
+                    userId: complaintResolution.complaint.userId,
+                    eventType: RESOLVED,
+                    payload: {
+                        complaintId: complaintDetails.id,
+                        title: complaintDetails.title,
+                        resolvedBy: complaintDetails.complaintAssignment?.user?.name,
+                        designation: complaintDetails.complaintAssignment?.user?.issueIncharge?.designation?.designation?.designationName,
+                    },
+                    createdAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                }
+            });
+
+            if (!notifyUserAboutResolution) {
+                throw new Error("Could not notify user about complaint resolution.");
             }
 
             const outboxDetails = await tx.complaintOutbox.createMany({

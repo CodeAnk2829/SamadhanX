@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authMiddleware, authorizeMiddleware } from "../middleware/auth";
-import { changePassword, deleteUser, getUpvotedComplaints, getUserProfile, signin, signout, signup, updateUserDetails } from "../controllers/userController";
+import { changePassword, deleteUser, getUpvotedComplaints, getUserNotification, getUserProfile, signin, signout, signup, updateUserDetails } from "../controllers/userController";
 
 const router = Router();
 
@@ -19,6 +19,7 @@ router.post("/auth/signout", authMiddleware, signout);
 // READ
 router.get("/me/profile", authMiddleware, authorizeMiddleware(Role), getUserProfile);
 router.get("/me/upvoted", authMiddleware, authorizeMiddleware(Role), getUpvotedComplaints); // get all complaints the logged in user has upvoted for
+router.get("/me/notifications", authMiddleware, authorizeMiddleware(Role), getUserNotification);
 
 // UPDATE
 router.patch("/me/update", authMiddleware, authorizeMiddleware(Role), updateUserDetails);
