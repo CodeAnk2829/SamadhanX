@@ -166,28 +166,28 @@ export const createComplaint = async (req: any, res: any) => {
             const notifyUserAboutCreationAndAssignment = await tx.notification.createMany({
                 data: [{
                     userId: req.user.id,
-                    eventType: CREATED,
-                    payload: {
-                        complaintId: complaintDetails.id,
-                        title: complaintDetails.title,
-                    },
-                    createdAt: new Date(currentDateTime).toISOString()
-                }, {
-                    userId: req.user.id,
-                    eventType: ASSIGNED,
+                    eventType: "ASSIGNED",
                     payload: {
                         complaintId: complaintDetails.id,
                         title: complaintDetails.title,
                         isAssignedTo: complaintDetails.complaintAssignment.user.name,
                         designation: complaintDetails.complaintAssignment.user.issueIncharge.designation.designation.designationName,
                     }
+                }, {
+                    userId: req.user.id,
+                    eventType: "CREATED",
+                    payload: {
+                        complaintId: complaintDetails.id,
+                        title: complaintDetails.title,
+                    },
+                    createdAt: new Date(currentDateTime).toISOString()
                 }]
             });
 
             if (!notifyUserAboutCreationAndAssignment) {
                 throw new Error("Could not notify user about complaint creation and assignment.");
             }
-            
+
             const outboxDetails = await tx.complaintOutbox.create({
                 data: {
                     eventType: "complaint_created",
@@ -534,7 +534,7 @@ export const recreateComplaint = async (req: any, res: any) => {
         // check if the current user is the one who had raised this complaint earlier
         const relatedUserAndStatusDetails = await prisma.complaint.findUnique({
             where: { id: complaintId },
-            select: { 
+            select: {
                 title: true,
                 userId: true,
                 status: true,
@@ -591,7 +591,7 @@ export const recreateComplaint = async (req: any, res: any) => {
             const complaintDetails = await tx.complaint.update({
                 where: {
                     id: complaintId,
-                }, 
+                },
                 data: {
                     status: "RECREATED",
                     complaintAssignment: {
@@ -743,7 +743,7 @@ export const recreateComplaint = async (req: any, res: any) => {
 
             return complaintDetails;
         });
-        
+
         if (!complaintRecreation) {
             throw new Error("Could not recreate the complaint.");
         }
@@ -1200,8 +1200,8 @@ export const getComplaintHistory = async (req: any, res: any) => {
                         expiredAt: history.complaint.expiredAt
                     });
                     break;
-                
-                case "DELEGATED": 
+
+                case "DELEGATED":
                     response.push({
                         delegatedTo: history.user.name,
                         occupation: history.user.resolver.occupation.occupationName,
@@ -1218,7 +1218,7 @@ export const getComplaintHistory = async (req: any, res: any) => {
                         expiredAt: history.complaint.expiredAt
                     });
                     break;
-                
+
                 case "RESOLVED":
                     response.push({
                         resolvedBy: history.user.name,
@@ -1227,7 +1227,7 @@ export const getComplaintHistory = async (req: any, res: any) => {
                     });
                     break;
 
-                case "CLOSED": 
+                case "CLOSED":
                     response.push({
                         closedBy: history.handledBy,
                         closedAt: history.happenedAt
