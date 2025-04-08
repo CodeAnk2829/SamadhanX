@@ -19,9 +19,6 @@ async function startWorker() {
                     result = event;
                 }
 
-                // TODO: check whether the event is "closed" or "escalated" then perform actions
-                // mark closure_due as processed inside the close api
-
                 const jsonData = JSON.parse(result as string);
 
                 if (jsonData.eventType === "escalation") {
@@ -69,17 +66,17 @@ async function startWorker() {
                                 complaintAssignment: {
                                     update: {
                                         assignedTo: nextIncharge.incharge.id,
-                                        assignedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                                        assignedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                                     }
                                 },
                                 complaintHistory: {
                                     create: {
                                         eventType: "ESCALATED",
                                         handledBy: nextIncharge.incharge.id,
-                                        happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                                        happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                                     }
                                 },
-                                expiredAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString() // 2 mins after current time
+                                expiredAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString() // 2 mins after current time
                             },
                             include: {
                                 attachments: {
@@ -152,7 +149,7 @@ async function startWorker() {
                                     isEscalatedTo: escalatedComplaint.complaintAssignment?.user?.name,
                                     designation: escalatedComplaint.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
                                 },
-                                createdAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                                createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                             }
                         });
 
@@ -174,7 +171,7 @@ async function startWorker() {
                                     designation: escalatedComplaint.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
                                 },
                                 status: "PENDING",
-                                processAfter: new Date(Date.now())
+                                processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                             }, {
                                 eventType: "complaint_escalation_due",
                                 payload: {
@@ -185,7 +182,7 @@ async function startWorker() {
                                     rank: nextIncharge.designation.rank,
                                 },
                                 status: "PENDING",
-                                processAfter: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000))
+                                processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString()
                             }]
                         });
 
@@ -212,17 +209,17 @@ async function startWorker() {
                                 complaintHistory: {
                                     create: {
                                         eventType: "CLOSED",
-                                        happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                                        happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                                     }
                                 },
                                 feedback: {
                                     update: {
                                         mood: "",
                                         remarks: "No feedback",
-                                        givenAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                                        givenAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                                     }
                                 },
-                                closedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                                closedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                             }
                         });
 

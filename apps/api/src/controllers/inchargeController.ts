@@ -1,14 +1,10 @@
 import { prisma } from "@repo/db/client";
 import { DelegateSchema } from "@repo/types/inchargeTypes";
-import { RedisManager } from "../util/RedisManager";
 import { DELEGATED, ESCALATED, RESOLVED } from "@repo/types/wsMessageTypes";
-import { complaintRouter } from "../routes/complaint";
 import { sendSMS } from "@repo/twilio/sendSms";
-import { ECS } from "aws-sdk";
 
 export const delegateComplaint = async (req: any, res: any) => {
     try {
-        const redisClient = RedisManager.getInstance();
         const body = req.body // { complaintId: string, resolverId: string }
         const parseData = DelegateSchema.safeParse(body);
         const currentInchargeId = req.user.id;
@@ -69,7 +65,7 @@ export const delegateComplaint = async (req: any, res: any) => {
         if (complaintDetails.complaintAssignment?.user?.id !== currentInchargeId) {
             throw new Error("You are not assigned to this complaint.");
         }
-        
+
         // check whether the complaint has already delegated
         if (complaintDetails.status === "DELEGATED") {
             throw new Error(`This complaint has already been delegated at ${complaintDetails.complaintDelegation?.delegatedAt}`)
@@ -79,7 +75,7 @@ export const delegateComplaint = async (req: any, res: any) => {
         if (complaintDetails.status === "CLOSED" || complaintDetails.status === "RESOLVED") {
             throw new Error("This complaint is already resolved or closed.");
         }
-        
+
         console.log("delegation started");
         const delegate = await prisma.$transaction(async (tx: any) => {
             // Update complaint delegation
@@ -89,7 +85,7 @@ export const delegateComplaint = async (req: any, res: any) => {
                 },
                 data: {
                     delegateTo: resolverId,
-                    delegatedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                    delegatedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 },
                 include: {
                     complaint: {
@@ -133,7 +129,7 @@ export const delegateComplaint = async (req: any, res: any) => {
                         create: {
                             eventType: "DELEGATED",
                             handledBy: resolverId,
-                            happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                            happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
                 }
@@ -155,7 +151,7 @@ export const delegateComplaint = async (req: any, res: any) => {
                         occupation: complaintDelegation.user?.resolver?.occupation?.occupationName,
                         designation: complaintDetails.complaintAssignment?.user?.issueIncharge?.designation?.designation?.designationName,
                     },
-                    createdAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                    createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 }
             });
 
@@ -178,7 +174,7 @@ export const delegateComplaint = async (req: any, res: any) => {
                         delegatedAt: complaintDelegation.delegatedAt
                     },
                     status: "PENDING",
-                    processAfter: new Date(Date.now())
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 }
             });
 
@@ -331,17 +327,17 @@ export const escalateComplaint = async (req: any, res: any) => {
                     complaintAssignment: {
                         update: {
                             assignedTo: nextIncharge.incharge.id,
-                            assignedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                            assignedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
                     complaintHistory: {
                         create: {
                             eventType: "ESCALATED",
                             handledBy: nextIncharge.incharge.id,
-                            happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                            happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
-                    expiredAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString() // 2 mins after current time
+                    expiredAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString(), // 2 mins after current time
                 },
                 include: {
                     attachments: {
@@ -402,7 +398,7 @@ export const escalateComplaint = async (req: any, res: any) => {
             if (!complaintEscalation) {
                 throw new Error("Could not escalate a complaint");
             }
-            
+
             const notifyUserAboutEscalation = await tx.notification.create({
                 data: {
                     userId: complaintEscalation.userId,
@@ -413,7 +409,7 @@ export const escalateComplaint = async (req: any, res: any) => {
                         isEscalatedTo: complaintEscalation.complaintAssignment?.user?.name,
                         designation: complaintEscalation.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
                     },
-                    createdAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                    createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 }
             });
 
@@ -456,7 +452,7 @@ export const escalateComplaint = async (req: any, res: any) => {
                         designation: complaintEscalation.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
                     },
                     status: "PENDING",
-                    processAfter: new Date(Date.now())
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 }, {
                     eventType: "complaint_escalation_due",
                     payload: {
@@ -467,7 +463,7 @@ export const escalateComplaint = async (req: any, res: any) => {
                         rank: nextIncharge.designation.rank, // rank of currently escalated incharge
                     },
                     status: "PENDING",
-                    processAfter: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000))
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString()
                 }]
             });
 
@@ -676,7 +672,7 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
                 },
                 data: {
                     resolvedBy: currentInchargeId,
-                    resolvedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                    resolvedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 },
                 select: {
                     complaint: {
@@ -712,7 +708,7 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
                         create: {
                             eventType: "RESOLVED",
                             handledBy: currentInchargeId,
-                            happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                            happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
                 }
@@ -732,7 +728,7 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
                         resolvedBy: complaintDetails.complaintAssignment?.user?.name,
                         designation: complaintDetails.complaintAssignment?.user?.issueIncharge?.designation?.designation?.designationName,
                     },
-                    createdAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                    createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 }
             });
 
@@ -754,26 +750,26 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
                         resolvedAt: complaintResolution.resolvedAt,
                     },
                     status: "PENDING",
-                    processAfter: new Date(Date.now())
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 }, {
-                        eventType: "complaint_closure_due",
-                        payload: {
-                            complaintId,
-                            complainerId: complaintResolution.complaint.userId,
-                            isAssignedTo: complaintDetails.complaintAssignment?.user?.id,
-                            access: complaintDetails.access,
-                            title: complaintDetails.title,
-                            closedAt: complaintDetails.closedAt,
-                            feedback: {
-                                id: complaintDetails.feedback?.id,
-                                mood: complaintDetails.feedback?.mood,
-                                remarks: complaintDetails.feedback?.remarks,
-                                givenAt: complaintDetails.feedback?.givenAt,
-                            }
-                        },
-                        status: "PENDING",
-                        processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString()
-                    }]
+                    eventType: "complaint_closure_due",
+                    payload: {
+                        complaintId,
+                        complainerId: complaintResolution.complaint.userId,
+                        isAssignedTo: complaintDetails.complaintAssignment?.user?.id,
+                        access: complaintDetails.access,
+                        title: complaintDetails.title,
+                        closedAt: complaintDetails.closedAt,
+                        feedback: {
+                            id: complaintDetails.feedback?.id,
+                            mood: complaintDetails.feedback?.mood,
+                            remarks: complaintDetails.feedback?.remarks,
+                            givenAt: complaintDetails.feedback?.givenAt,
+                        }
+                    },
+                    status: "PENDING",
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString()
+                }]
             });
 
             if (!outboxDetails) {
@@ -838,7 +834,7 @@ export const scheduleNotification = async (req: any, res: any) => {
             ok: true,
             message: "Notification sent successfully."
         });
-        
+
     } catch (err) {
         res.status(400).json({
             ok: false,

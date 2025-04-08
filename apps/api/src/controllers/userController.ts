@@ -7,7 +7,6 @@ const secret: string | undefined = process.env.JWT_SECRET;
 
 export const signin = async (req: any, res: any) => {
     try {
-        const currentDateTime = new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString();
         const body = req.body; // { email: "" or phoneNumber: "", password: "", role: "" }
         const parseData = SigninSchema.safeParse(body);
 
@@ -76,7 +75,6 @@ export const signin = async (req: any, res: any) => {
 
 export const signup = async (req: any, res: any) => {
     try {
-        const currentDateTime = new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString();
         const body = req.body; // { name: string, email: string, phoneNumber: string, password: string, role: string }
         const parseData = SignupSchema.safeParse(body);
 
@@ -105,7 +103,7 @@ export const signup = async (req: any, res: any) => {
                 password: password,
                 name: parseData.data.name,
                 role: parseData.data.role as "ADMIN" | "FACULTY" | "STUDENT",
-                createdAt: new Date(currentDateTime).toISOString(),
+                createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
             },
         });
 
@@ -122,7 +120,7 @@ export const signup = async (req: any, res: any) => {
             httpOnly: true,
             expires: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (30 * 24 * 60 * 60 * 1000)),
         });
-        
+
         res.status(201).json({
             token: token,
             id: user.id,
@@ -160,22 +158,20 @@ export const getUserNotification = async (req: any, res: any) => {
         const { eventType } = req.query;
         const userId = req.user.id;
 
-        console.log("eventType: ", eventType.toUpperCase());
-
         if (!eventType) {
             throw new Error("No query string provided.");
         }
-        
+
         // get user's notifications
         let notifications = await prisma.notification.findMany({
-            where: { 
+            where: {
                 userId
             },
             orderBy: {
                 createdAt: "desc"
             }
         });
-        
+
         if (!notifications) {
             throw new Error("Could not fetch notifications.");
         }
@@ -353,7 +349,6 @@ export const getUpvotedComplaints = async (req: any, res: any) => {
 
 export const updateUserDetails = async (req: any, res: any) => {
     try {
-        const currentDateTime = new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString();
         const userId = req.user.id;
         const body = req.body; // { name: string, email: string, phoneNumber: string }
         const parseData = UpdateSchema.safeParse(body);
@@ -369,7 +364,7 @@ export const updateUserDetails = async (req: any, res: any) => {
                 name: parseData.data.name,
                 email: parseData.data.email,
                 phoneNumber: parseData.data.phoneNumber,
-                updatedAt: currentDateTime,
+                updatedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
             },
             select: {
                 id: true,
@@ -438,7 +433,7 @@ export const changePassword = async (req: any, res: any) => {
         const newPassword = bcrypt.hashSync(parseData.data.newPassword, 10);
         const updatedUser = await prisma.user.update({
             where: { id: userId },
-            data: { 
+            data: {
                 password: newPassword,
             },
             select: { id: true }

@@ -1,7 +1,6 @@
 import { prisma } from "@repo/db/client";
 import { CreateComplaintSchema, UpdateComplaintSchema } from "@repo/types/complaintTypes";
-import { UPDATED, UPVOTED, DELETED, CREATED, ASSIGNED, CLOSED, RECREATED } from "@repo/types/wsMessageTypes";
-import { RedisManager } from "../util/RedisManager";
+import { UPDATED, CLOSED, RECREATED, DELEGATED, ESCALATED, RESOLVED } from "@repo/types/wsMessageTypes";
 
 export const createComplaint = async (req: any, res: any) => {
     try {
@@ -42,8 +41,6 @@ export const createComplaint = async (req: any, res: any) => {
             throw new Error("No incharge found for the given location");
         }
 
-        const currentDateTime = Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000);
-
         const createComplaint = await prisma.$transaction(async (tx: any) => {
             const complaintDetails = await tx.complaint.create({
                 data: {
@@ -51,11 +48,12 @@ export const createComplaint = async (req: any, res: any) => {
                     description: parseData.data.description,
                     access: parseData.data.access,
                     postAsAnonymous: parseData.data.postAsAnonymous,
-
+                    createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                    expiredAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + 2 * 60 * 1000).toISOString(), // 7 days from now
                     complaintAssignment: {
                         create: {
                             assignedTo: issueIncharge.inchargeId,
-                            assignedAt: new Date(currentDateTime).toISOString()
+                            assignedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
                     complaintDelegation: {
@@ -67,12 +65,12 @@ export const createComplaint = async (req: any, res: any) => {
                                 {
                                     eventType: "CREATED",
                                     handledBy: req.user.id,
-                                    happenedAt: new Date(currentDateTime)
+                                    happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                                 },
                                 {
                                     eventType: "ASSIGNED",
                                     handledBy: issueIncharge.inchargeId,
-                                    happenedAt: new Date(currentDateTime)
+                                    happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                                 }
                             ]
                         }
@@ -84,7 +82,7 @@ export const createComplaint = async (req: any, res: any) => {
                         create: {
                             mood: "",
                             remarks: "",
-                            givenAt: new Date(currentDateTime)
+                            givenAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
                     user: {
@@ -99,8 +97,6 @@ export const createComplaint = async (req: any, res: any) => {
                     attachments: {
                         create: attachmentsData
                     },
-                    createdAt: new Date(currentDateTime).toISOString(),
-                    expiredAt: new Date(currentDateTime + 2 * 60 * 1000).toISOString() // 7 days from now
                 },
                 include: {
                     attachments: {
@@ -166,21 +162,22 @@ export const createComplaint = async (req: any, res: any) => {
             const notifyUserAboutCreationAndAssignment = await tx.notification.createMany({
                 data: [{
                     userId: req.user.id,
+                    eventType: "CREATED",
+                    payload: {
+                        complaintId: complaintDetails.id,
+                        title: complaintDetails.title,
+                    },
+                    createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                }, {
+                    userId: req.user.id,
                     eventType: "ASSIGNED",
                     payload: {
                         complaintId: complaintDetails.id,
                         title: complaintDetails.title,
                         isAssignedTo: complaintDetails.complaintAssignment.user.name,
                         designation: complaintDetails.complaintAssignment.user.issueIncharge.designation.designation.designationName,
-                    }
-                }, {
-                    userId: req.user.id,
-                    eventType: "CREATED",
-                    payload: {
-                        complaintId: complaintDetails.id,
-                        title: complaintDetails.title,
                     },
-                    createdAt: new Date(currentDateTime).toISOString()
+                    createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (5 * 1000)).toISOString()
                 }]
             });
 
@@ -202,7 +199,7 @@ export const createComplaint = async (req: any, res: any) => {
                         rank: complaintDetails.complaintAssignment?.user?.issueIncharge?.designation.rank,
                     },
                     status: "PENDING",
-                    processAfter: new Date(currentDateTime).toISOString()
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 }
             });
 
@@ -302,27 +299,31 @@ export const closeComplaint = async (req: any, res: any) => {
                 },
                 data: {
                     status: "CLOSED",
+                    closedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
                     complaintHistory: {
                         create: {
                             eventType: "CLOSED",
                             handledBy: userId,
-                            happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                            happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
                     feedback: {
                         update: {
                             mood,
                             remarks,
-                            givenAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                            givenAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
-                    closedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
                 },
                 include: {
                     feedback: true,
                     complaintAssignment: {
                         include: {
-                            user: true,
+                            user: {
+                                omit: {
+                                    password: true,
+                                }
+                            },
                         }
                     },
                 }
@@ -424,7 +425,10 @@ export const deletedComplaintById = async (req: any, res: any) => {
         // check if current user is the one who created this complaint
         const doesComplaintBelongToLoggedInUser = await prisma.complaint.findUnique({
             where: { id: complaintId },
-            select: { userId: true }
+            select: {
+                userId: true,
+                status: true,
+            }
         });
 
         if (!doesComplaintBelongToLoggedInUser) {
@@ -433,6 +437,12 @@ export const deletedComplaintById = async (req: any, res: any) => {
 
         if (doesComplaintBelongToLoggedInUser.userId !== currentUserId) {
             throw new Error("Access Denied. You do not have permissions to make changes.")
+        }
+
+        if (doesComplaintBelongToLoggedInUser.status === DELEGATED ||
+            doesComplaintBelongToLoggedInUser.status === RESOLVED
+        ) {
+            throw new Error("Delete action could not be performed as complaint status is undesirable");
         }
 
         const deletedComplaint = await prisma.$transaction(async (tx: any) => {
@@ -459,19 +469,6 @@ export const deletedComplaintById = async (req: any, res: any) => {
                 throw new Error("Deletion request failed.");
             }
 
-            const updateComplaintHistory = await tx.complaintHistory.create({
-                data: {
-                    complaintId,
-                    eventType: "DELETED",
-                    handledBy: currentUserId,
-                    happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
-                }
-            });
-
-            if (!updateComplaintHistory) {
-                throw new Error("Could not update complaint history");
-            }
-
             const deleteComplaintFromNotification = await tx.notification.deleteMany({
                 where: {
                     payload: {
@@ -496,9 +493,31 @@ export const deletedComplaintById = async (req: any, res: any) => {
                         wasAssignedTo: complaintDeletion.complaintAssignment?.user?.id as string
                     },
                     status: "PENDING",
-                    processAfter: new Date(Date.now())
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 }
             });
+
+            // also mark escalation_due event as processed as the complaint was deleted
+            const markEscalationDueAsProcessed = await tx.complaintOutbox.updateMany({
+                where: {
+                    AND: [
+                        { eventType: "complaint_escalation_due" },
+                        {
+                            payload: {
+                                path: ['complaintId'],
+                                equals: complaintId
+                            }
+                        }
+                    ]
+                },
+                data: {
+                    status: "PROCESSED"
+                }
+            });
+
+            if (!markEscalationDueAsProcessed) {
+                throw new Error("Could not mark complaint escalation due as processed");
+            }
 
             if (!outboxDetails) {
                 throw new Error("Could not create complaint_deleted event in outbox.");
@@ -585,8 +604,6 @@ export const recreateComplaint = async (req: any, res: any) => {
             throw new Error("No incharge found for the given location");
         }
 
-        const currentDateTime = Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000);
-
         const complaintRecreation = await prisma.$transaction(async (tx) => {
             const complaintDetails = await tx.complaint.update({
                 where: {
@@ -594,10 +611,12 @@ export const recreateComplaint = async (req: any, res: any) => {
                 },
                 data: {
                     status: "RECREATED",
+                    updatedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                    expiredAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + 2 * 60 * 1000).toISOString(), // 7 days from now
                     complaintAssignment: {
                         update: {
                             assignedTo: issueIncharge.inchargeId,
-                            assignedAt: new Date(currentDateTime).toISOString()
+                            assignedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
                     complaintHistory: {
@@ -606,18 +625,16 @@ export const recreateComplaint = async (req: any, res: any) => {
                                 {
                                     eventType: "RECREATED",
                                     handledBy: req.user.id,
-                                    happenedAt: new Date(currentDateTime)
+                                    happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                                 },
                                 {
                                     eventType: "ASSIGNED",
                                     handledBy: issueIncharge.inchargeId,
-                                    happenedAt: new Date(currentDateTime)
+                                    happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                                 }
                             ]
                         }
                     },
-                    updatedAt: new Date(currentDateTime).toISOString(),
-                    expiredAt: new Date(currentDateTime + 2 * 60 * 1000).toISOString() // 7 days from now
                 },
                 include: {
                     attachments: {
@@ -680,8 +697,8 @@ export const recreateComplaint = async (req: any, res: any) => {
                 throw new Error("Complaint could not be recreated.");
             }
 
-            const notifyUserAboutRecreation = await tx.notification.create({
-                data: {
+            const notifyUserAboutRecreation = await tx.notification.createMany({
+                data: [{
                     userId: currentUserId,
                     eventType: RECREATED,
                     payload: {
@@ -690,8 +707,18 @@ export const recreateComplaint = async (req: any, res: any) => {
                         isAssignedTo: complaintDetails.complaintAssignment?.user?.name,
                         designation: complaintDetails.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
                     },
-                    createdAt: new Date(currentDateTime).toISOString()
-                }
+                    createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                }, {
+                    userId: currentUserId,
+                    eventType: "ASSIGNED",
+                    payload: {
+                        complaintId: complaintDetails.id,
+                        title: complaintDetails.title,
+                        isAssignedTo: complaintDetails.complaintAssignment?.user?.name,
+                        designation: complaintDetails.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
+                    },
+                    createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (5 * 1000)).toISOString()
+                }]
             });
 
             if (!notifyUserAboutRecreation) {
@@ -712,7 +739,7 @@ export const recreateComplaint = async (req: any, res: any) => {
                         rank: complaintDetails.complaintAssignment?.user?.issueIncharge?.designation.rank,
                     },
                     status: "PENDING",
-                    processAfter: new Date(currentDateTime).toISOString()
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 }
             });
 
@@ -1438,7 +1465,7 @@ export const updateComplaintById = async (req: any, res: any) => {
                 deleteMany: [{ complaintId }], // same as tags
                 create: attachmentsData
             },
-            updatedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+            updatedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
         }
 
         const updateDetails = await prisma.$transaction(async (tx: any) => {
@@ -1522,7 +1549,7 @@ export const updateComplaintById = async (req: any, res: any) => {
                         updatedAt: updateComplaint.updatedAt,
                     },
                     status: "PENDING",
-                    processAfter: new Date(Date.now())
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 }
             });
 
@@ -1597,7 +1624,6 @@ export const updateComplaintById = async (req: any, res: any) => {
 
 export const upvoteComplaint = async (req: any, res: any) => {
     try {
-        const redisClient = RedisManager.getInstance();
         const complaintId: string = req.params.id;
         const userId: string = req.user.id;
 
@@ -1690,7 +1716,7 @@ export const upvoteComplaint = async (req: any, res: any) => {
                         isAssignedTo: upvoteComplaint.complaintAssignment?.user?.id as string,
                     },
                     status: "PENDING",
-                    processAfter: new Date(Date.now())
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 }
             });
 

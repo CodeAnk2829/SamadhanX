@@ -162,7 +162,7 @@ async function processWithExponentialBackOff(event: any, redisClient: RedisClien
                         const storeProcessedEvent = await prisma.processedEvent.create({
                             data: {
                                 eventId: idemPotencyKey,
-                                processedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000))
+                                processedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                             }
                         });
 
@@ -235,7 +235,7 @@ async function processWithExponentialBackOff(event: any, redisClient: RedisClien
                         const storeProcessedEvent = await prisma.processedEvent.create({
                             data: {
                                 eventId: idemPotencyKey,
-                                processedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000))
+                                processedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                             }
                         });
 
@@ -265,6 +265,11 @@ async function processWithExponentialBackOff(event: any, redisClient: RedisClien
                     const closureDuePayload = event.payload as unknown as ClosedComplaintPayload;
                     const closureExpiryTimestamp = event.processAfter.getTime();
                     const currentTimestamp = new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).getTime();
+
+                    console.log("stored time ", event.processAfter);
+                    console.log("current time ", new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)));
+                    console.log("currentTimestamp: ", currentTimestamp);
+                    console.log("closureExpiryTimestamp: ", closureExpiryTimestamp);
 
                     if (currentTimestamp > closureExpiryTimestamp) {
                         const pushClosureEvent = await redisClient.lPush("queue", JSON.stringify({
@@ -323,7 +328,7 @@ async function processWithExponentialBackOff(event: any, redisClient: RedisClien
                         const storeProcessedEvent = await prisma.processedEvent.create({
                             data: {
                                 eventId: idemPotencyKey,
-                                processedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000))
+                                processedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                             }
                         });
 
@@ -376,7 +381,7 @@ async function processWithExponentialBackOff(event: any, redisClient: RedisClien
                         const storeProcessedEvent = await prisma.processedEvent.create({
                             data: {
                                 eventId: idemPotencyKey,
-                                processedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000))
+                                processedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                             }
                         });
 
@@ -406,6 +411,11 @@ async function processWithExponentialBackOff(event: any, redisClient: RedisClien
                     const escalationPayload = event.payload as unknown as EscalateComplaintPayload;
                     const timestamp1 = event.processAfter.getTime();
                     const timestamp2 = new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).getTime();
+
+                    console.log("stored time ", event.processAfter);
+                    console.log("current time ", new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)));
+                    console.log("timestamp1: ", timestamp1);
+                    console.log("timestamp2: ", timestamp2);
 
                     if (timestamp1 < timestamp2) { // check if the complaint has expired
                         console.log("pushing into queue due to escalation was due");
@@ -464,7 +474,7 @@ async function processWithExponentialBackOff(event: any, redisClient: RedisClien
                         const storeProcessedEvent = await prisma.processedEvent.create({
                             data: {
                                 eventId: idemPotencyKey,
-                                processedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000))
+                                processedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                             }
                         });
 
@@ -514,7 +524,7 @@ async function processWithExponentialBackOff(event: any, redisClient: RedisClien
                         const storeProcessedEvent = await prisma.processedEvent.create({
                             data: {
                                 eventId: idemPotencyKey,
-                                processedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000))
+                                processedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                             }
                         });
 
@@ -584,7 +594,7 @@ async function processWithExponentialBackOff(event: any, redisClient: RedisClien
                         const storeProcessedEvent = await prisma.processedEvent.create({
                             data: {
                                 eventId: idemPotencyKey,
-                                processedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000))
+                                processedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                             }
                         });
 
@@ -638,7 +648,7 @@ async function processWithExponentialBackOff(event: any, redisClient: RedisClien
                         const storeProcessedEvent = await prisma.processedEvent.create({
                             data: {
                                 eventId: idemPotencyKey,
-                                processedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000))
+                                processedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                             }
                         });
 
@@ -688,7 +698,7 @@ async function processWithExponentialBackOff(event: any, redisClient: RedisClien
                         const storeProcessedEvent = await prisma.processedEvent.create({
                             data: {
                                 eventId: idemPotencyKey,
-                                processedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000))
+                                processedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                             }
                         });
 
