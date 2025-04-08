@@ -1,7 +1,6 @@
 import { prisma } from "@repo/db/client";
 import { DelegateSchema } from "@repo/types/inchargeTypes";
 import { DELEGATED, ESCALATED, RESOLVED } from "@repo/types/wsMessageTypes";
-import { sendSMS } from "@repo/twilio/sendSms";
 
 export const delegateComplaint = async (req: any, res: any) => {
     try {
@@ -132,6 +131,39 @@ export const delegateComplaint = async (req: any, res: any) => {
                             happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
+                }, 
+                include: {
+                    complaintAssignment: {
+                        select: {
+                            assignedAt: true,
+                            user: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    phoneNumber: true,
+                                    issueIncharge: {
+                                        select: {
+                                            designation: {
+                                                select: {
+                                                    designation: {
+                                                        select: {
+                                                            designationName: true,
+                                                        }
+                                                    },
+                                                    rank: true,
+                                                }
+                                            },
+                                            location: {
+                                                select: {
+                                                    locationName: true,
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             })
 
@@ -161,15 +193,21 @@ export const delegateComplaint = async (req: any, res: any) => {
 
             const outboxDetails = await tx.complaintOutbox.create({
                 data: {
-                    eventType: "complaint_delegated",
+                    eventType: "notify_resolver",
                     payload: {
                         complaintId,
                         complainerId: complaintDetails.userId,
-                        access: updateComplaintAsDelegated.access,
+                        access: complaintDetails.access,
                         title: updateComplaintAsDelegated.title,
+                        description: updateComplaintAsDelegated.description,
                         isAssignedTo: currentInchargeId,
+                        inchargePhoneNumber: updateComplaintAsDelegated.complaintAssignment?.user?.phoneNumber,
+                        inchargeName: updateComplaintAsDelegated.complaintAssignment?.user?.name,
+                        inchargeDesignation: updateComplaintAsDelegated.complaintAssignment?.user?.issueIncharge?.designation?.designation?.designationName,
+                        location: updateComplaintAsDelegated.complaintAssignment?.user?.issueIncharge?.location?.locationName,
                         delegatedTo: complaintDelegation.delegateTo,
                         resolverName: complaintDelegation.user?.name,
+                        resolverPhoneNumber: complaintDelegation.user?.phoneNumber,
                         occupation: complaintDelegation.user?.resolver?.occupation?.occupationName,
                         delegatedAt: complaintDelegation.delegatedAt
                     },
@@ -821,24 +859,6 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
         res.status(400).json({
             ok: false,
             error: err instanceof Error ? err.message : "An error occurred while marking the complaint as resolved."
-        });
-    }
-}
-
-export const scheduleNotification = async (req: any, res: any) => {
-    try {
-        console.log("we reached here");
-        const result = await sendSMS(["+919341211274"], "Hello, this is a test message from the complaint management system.");
-        console.log(result);
-        res.status(200).json({
-            ok: true,
-            message: "Notification sent successfully."
-        });
-
-    } catch (err) {
-        res.status(400).json({
-            ok: false,
-            error: err instanceof Error ? err.message : "An error occurred while sending out notification."
         });
     }
 }

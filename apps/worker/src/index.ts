@@ -1,5 +1,6 @@
 import { prisma } from "@repo/db/client";
 import { RedisClient } from "@repo/redis/client";
+import { notifyViaSms } from "./notify";
 
 async function startWorker() {
     try {
@@ -298,10 +299,48 @@ async function startWorker() {
                     }
 
                     console.log("Complaint closed successfully");
+                } else if (jsonData.eventType === "resolver_notification") {
+                    // notify the resolver via sms about the complaint with the necessary details
+                    const resolverContact = `+91${jsonData.resolverPhoneNumber}`;
+                    const response = await notifyViaSms([resolverContact],
+                        `Hello ${jsonData.resolverName}, You have a new complaint assigned to you, Title: ${jsonData.title}, Location: ${jsonData.location}, Incharge Details: ${jsonData.inchargeName} (${jsonData.inchargeDesignation}), ${jsonData.inchargePhoneNumber}`
+                    );
+
+                    console.log(response);
+
+                    if (!response) {
+                        throw new Error("Could not send SMS to resolver. Trying again...");
+                    }
+
+                    // store delegation event in outbox for further propagation
+                    const storeDelegationEvent = await prisma.complaintOutbox.create({
+                        data: {
+                            eventType: "complaint_delegated",
+                            payload: {
+                                complaintId: jsonData.complaintId,
+                                complainerId: jsonData.complainerId,
+                                access: jsonData.access,
+                                title: jsonData.title,
+                                isAssignedTo: jsonData.isAssignedTo,
+                                delegatedTo: jsonData.resolverId,
+                                resolverName: jsonData.resolverName,
+                                occupation: jsonData.occupation,
+                                delegatedAt: jsonData.delegatedAt,
+                            },
+                            status: "PENDING",
+                            processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                        }
+                    });
+
+                    if (!storeDelegationEvent) {
+                        throw new Error("Could not store delegation event in outbox");
+                    }
+
+                    console.log("Delegation event stored in outbox successfully");
+
                 } else {
                     throw new Error("Invalid eventType");
                 }
-
 
                 await consumer.lRem("worker-queue", -1, result as string);
                 await new Promise((resolve) => setTimeout(resolve, 5000));

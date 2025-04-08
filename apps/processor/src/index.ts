@@ -122,6 +122,24 @@ export interface ResolveComplaintPayload {
     resolvedAt: Date
 }
 
+export interface ResolverNotificationPayload {
+    complaintId: String;
+    complainerId: String;
+    access: String;
+    title: String;
+    description: String;
+    isAssignedTo: String;
+    inchargePhoneNumber: String;
+    inchargeName: String;
+    inchargeDesignation: String;
+    location: String;
+    delegatedTo: String;
+    resolverName: String;
+    resolverPhoneNumber: String;
+    occupation: String;
+    delegatedAt: Date;
+}
+
 const BASE_DELAY = 1000;
 const MAX_RETRIES = 5;
 
@@ -720,6 +738,48 @@ async function processWithExponentialBackOff(event: any, redisClient: RedisClien
                         throw new Error("Could not mark escalation as processed. Retrying...");
                     }
 
+                    break;
+                
+                case "notify_resolver": 
+                    const notificationPayload = event.payload as unknown as ResolverNotificationPayload;
+
+                    const isNotifyResolverEventProcessed = await prisma.processedEvent.findUnique({
+                        where: { eventId: idemPotencyKey }
+                    });
+
+                    if (!isNotifyResolverEventProcessed) {
+                        // push this event to the queue
+                        const pushNotifyResolverEvent = await redisClient.lPush("queue", JSON.stringify({
+                            eventType: "resolver_notification",
+                            id: event.id,
+                            complaintId: notificationPayload.complaintId,
+                            title: notificationPayload.title,
+                            description: notificationPayload.description,
+                            isAssignedTo: notificationPayload.isAssignedTo,
+                            inchargePhoneNumber: notificationPayload.inchargePhoneNumber,
+                            inchargeName: notificationPayload.inchargeName,
+                            inchargeDesignation: notificationPayload.inchargeDesignation,
+                            location: notificationPayload.location,
+                            delegatedTo: notificationPayload.delegatedTo,
+                            resolverName: notificationPayload.resolverName,
+                            resolverPhoneNumber: notificationPayload.resolverPhoneNumber,
+                            occupation: notificationPayload.occupation,
+                            delegatedAt: notificationPayload.delegatedAt
+                        }));
+
+                        if (!pushNotifyResolverEvent) {
+                            throw new Error("Could not push the resolver notification event to the queue");
+                        }
+
+                        const markNotifyResolverAsProcessed = await prisma.complaintOutbox.update({
+                            where: { id: event.id },
+                            data: { status: "PROCESSED" }
+                        });
+
+                        if (!markNotifyResolverAsProcessed) {
+                            throw new Error("Could not mark notify resolver as processed.");
+                        }
+                    }
                     break;
 
                 default:
