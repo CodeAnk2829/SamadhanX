@@ -611,6 +611,7 @@ export const recreateComplaint = async (req: any, res: any) => {
                 },
                 data: {
                     status: "RECREATED",
+                    actionTaken: false,
                     updatedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
                     expiredAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + 2 * 60 * 1000).toISOString(), // 7 days from now
                     complaintAssignment: {

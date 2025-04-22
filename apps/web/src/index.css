@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+    --bodyColor: "#F9FAFB";
+}
+body {
+    background-color: var(--bodyColor);
+}
+
+.text-gradient {
+    color: #363ED9;
+    background-image: linear-gradient(45deg, #363ED9 34%, #7C48CF 48%, #CC23B5 67%);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.bg-gradient {
+    background-color: #121212;
+}

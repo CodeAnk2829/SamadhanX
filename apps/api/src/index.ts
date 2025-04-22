@@ -9,11 +9,17 @@ import { complaintRouter } from "./routes/complaint";
 import { inchargeRouter } from "./routes/incharge";
 
 const app = express();
-// const redisClient = createClient();
+const corsOptions = {
+    origin: 'http://localhost:5173',
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    exposedHeaders: ['set-cookie']
+};
 dotenv.config();
 
 app.use(express.json());
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(cookieParser());
 
 app.use("/api/v1/admin", adminRouter);

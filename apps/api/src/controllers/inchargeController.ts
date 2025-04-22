@@ -549,7 +549,9 @@ export const getActiveComplaintsAssignedToIncharge = async (req: any, res: any) 
 
         const complaints = await prisma.complaint.findMany({
             where: {
-                status: "ASSIGNED",
+                status: {
+                    in: ["ASSIGNED", "RECREATED"]
+                },
                 complaintAssignment: {
                     assignedTo: currentIncharge.id
                 }
@@ -616,7 +618,7 @@ export const getActiveComplaintsAssignedToIncharge = async (req: any, res: any) 
                 actionTaken: complaint.actionTaken,
                 upvotes: complaint.totalUpvotes,
                 complainerId: complaint.userId,
-                complainerName: complaint.user.name,
+                complainerName: complaint.postAsAnonymous ? "Anonymous" : complaint.user.name,
                 attachments: complaint.attachments,
                 tags: complaint.tags.map((tag: any) => tag.tags.tagName),
                 location: complaint.complaintAssignment.user.issueIncharge.location.locationName,
@@ -635,6 +637,100 @@ export const getActiveComplaintsAssignedToIncharge = async (req: any, res: any) 
         res.status(400).json({
             ok: false,
             error: err instanceof Error ? err.message : "An error occurred while fetching complaints."
+        });
+    }
+}
+
+export const getAllComplaintsForWhichActionHasTaken = async (req: any, res: any) => {
+    try {
+        const currentInchargeId = req.user.id;
+
+        const complaints = await prisma.complaint.findMany({
+            where: {
+                status: {
+                    in: ["DELEGATED", "RESOLVED", "CLOSED"]
+                },
+                complaintAssignment: {
+                    assignedTo: currentInchargeId
+                }
+            },
+            orderBy: {
+                createdAt: "desc"
+            },
+            include: {
+                complaintAssignment: {
+                    select: {
+                        assignedAt: true,
+                        user: {
+                            select: {
+                                issueIncharge: {
+                                    select: {
+                                        location: {
+                                            select: {
+                                                locationName: true,
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                attachments: {
+                    select: {
+                        id: true,
+                        imageUrl: true
+                    }
+                },
+                tags: {
+                    select: {
+                        tags: {
+                            select: {
+                                tagName: true
+                            }
+                        }
+                    }
+                },
+                user: {
+                    select: {
+                        name: true,
+                        email: true,
+                        phoneNumber: true,
+                    }
+                },
+            }
+        });
+
+        if (!complaints) {
+            throw new Error("Could not find complaints assigned to you.");
+        }
+
+        const complaintDetails = complaints.map((complaint) => ({
+            id: complaint.id,
+            title: complaint.title,
+            description: complaint.description,
+            access: complaint.access,
+            postAsAnonymous: complaint.postAsAnonymous,
+            status: complaint.status,
+            actionTaken: complaint.actionTaken,
+            upvotes: complaint.totalUpvotes,
+            complainerId: complaint.userId,
+            complainerName: complaint.postAsAnonymous ? "Anonymous" : complaint.user.name,
+            attachments: complaint.attachments,
+            tags: complaint.tags.map((tag) => tag.tags.tagName),
+            locationAssignedToIncharge: complaint.complaintAssignment?.user?.issueIncharge?.location.locationName,
+            assignedAt: complaint.complaintAssignment?.assignedAt,
+            createdAt: complaint.createdAt,
+        }));
+
+        res.status(200).json({
+            ok: true,
+            complaintDetails
+        });
+    } catch (err) {
+        res.status(400).json({
+            ok: false,
+            error: err instanceof Error ? err.message : "An error occurred while fetching the catered complaints complaints."
         });
     }
 }
