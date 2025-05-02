@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import SearchBar from "../components/SearchBar";
 import ComplaintCard from "../components/ComplaintCard";
 import { Button, Pagination, Spinner } from "flowbite-react";
@@ -10,11 +10,44 @@ import { useComplaintWebSocket } from "../hooks/useComplaintWebSocket";
 import { IoMdRefresh } from "react-icons/io";
 import { motion, AnimatePresence } from "framer-motion";
 import moment from "moment-timezone";
+
+interface Attachment {
+  id: string;
+  imageUrl: string;
+}
+
+interface User {
+  userId: string;
+  name: string;
+}
+
+interface Tags {
+  tagName: string;
+}
 interface Complaint {
   id: string;
-  complaintDetails: {
-    upvotes: number;
-  };
+  title: string;
+  description: string;
+  access: string;
+  complainerId: string;
+  complainerName: User;
+  createdAt: string;
+  status: string;
+  attachments: Attachment[];
+  actionTaken: boolean;
+  upvotes: number;
+  postAsAnonymous: boolean;
+  tags: Tags[];
+  assignedTo: string;
+  inchargeId: string;
+  inchargeName: string;
+  inchargeEmail: string;
+  inchargePhone: string;
+  designation: string;
+  inchargeRank: number;
+  location: string;
+  assignedAt: string;
+  expireAt: string;
 }
 
 const Home = () => {
@@ -25,7 +58,7 @@ const Home = () => {
   const [complaintsPerPage, setComplaintsPerPage] = useState(10);
   const [newComplaintsAvailable, setNewComplaintsAvailable] = useState(false);
   const [filteredComplaints, setFilteredComplaints] = useState<Complaint[]>([]);
-  const onPageChange = (page: number) => setCurrentPage(page);
+  //const onPageChange = (page: number) => setCurrentPage(page);
   const lastComplaintIndex = currentPage * complaintsPerPage;
   const firstComplaintIndex = lastComplaintIndex - complaintsPerPage;
   const currentComplaints = complaints.slice(
@@ -247,7 +280,7 @@ const Home = () => {
     fetchComplaints();
   }, []);
 
-  const handleUpvote = async (complaintId) => {
+  const handleUpvote = async (complaintId: string) => {
     try {
       const res = await fetch(`/api/v1/complaint/upvote/${complaintId}`, {
         method: "POST",
@@ -420,11 +453,10 @@ const Home = () => {
             totalPages={Math.ceil(
               filteredComplaints.length / complaintsPerPage
             )}
-            onPageChange={onPageChange}
+            onPageChange={handlePageChange}
             className="mt-5 self-center"
             showIcons
             theme={customThemePagination}
-            onPageChange={handlePageChange}
           />
         </AnimatePresence>
       </div>
