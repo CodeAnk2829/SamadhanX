@@ -828,15 +828,22 @@ export const recreateComplaint = async (req: any, res: any) => {
 export const getAllComplaints = async (req: any, res: any) => {
     try {
         const userId = req.user.id;
+        const userRole = req.user.role;
 
         if (!userId) {
             throw new Error("Unauthorized");
         }
 
-        const complaints = await prisma.complaint.findMany({
-            where: {
+        let whereClause = {};
+
+        if (userRole !== "ADMIN") {
+            whereClause = {
                 access: "PUBLIC"
-            },
+            }
+        }
+
+        const complaints = await prisma.complaint.findMany({
+            where: whereClause,
             orderBy: {
                 createdAt: "desc" // get recent complaints first
             },
@@ -1051,7 +1058,7 @@ export const getComplaintById = async (req: any, res: any) => {
             throw new Error("Could not fetch the required complaint");
         }
 
-        if (complaint.access === "PRIVATE" && userId !== complaint.userId) {
+        if ((userRole === "STUDENT" || userRole === "FACULTY") && complaint.access === "PRIVATE" && userId !== complaint.userId) {
             throw new Error("No 'Public' complaint found with the given complaint ID");
         }
 
@@ -1112,6 +1119,153 @@ export const getComplaintById = async (req: any, res: any) => {
             ok: false,
             error: err instanceof Error ? err.message : "An error occurred while fetching complaint"
         });
+    }
+}
+
+export const getComplaintsCreatedInLastNDays = async (req: any, res: any) => {
+    try {
+        const days = req.query.days;
+        const userId = req.user.id;
+
+        if (!days) {
+            throw new Error("Please provide the number of days");
+        }
+
+        if (days < 0 || days > 90) {
+            throw new Error("Days should be between 0 and 90");
+        }
+
+        const complaints = await prisma.complaint.findMany({
+            where: {
+                createdAt: {
+                    gte: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) - (days * 24 * 60 * 60 * 1000))
+                }
+            },
+            orderBy: {
+                createdAt: "desc" // get recent complaints first
+            },
+            include: {
+                attachments: {
+                    select: {
+                        id: true,
+                        imageUrl: true
+                    }
+                },
+                tags: {
+                    select: {
+                        tags: {
+                            select: {
+                                tagName: true
+                            }
+                        }
+                    }
+                },
+                user: {
+                    select: {
+                        id: true,
+                        name: true,
+                    }
+                },
+                complaintAssignment: {
+                    select: {
+                        assignedAt: true,
+                        user: {
+                            select: {
+                                id: true,
+                                name: true,
+                                phoneNumber: true,
+                                email: true,
+                                issueIncharge: {
+                                    select: {
+                                        designation: {
+                                            select: {
+                                                designation: {
+                                                    select: {
+                                                        designationName: true,
+                                                    }
+                                                },
+                                                rank: true,
+                                            }
+                                        },
+                                        location: true,
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+            }
+        });
+
+        if (!complaints) {
+            throw new Error("An error occurred while fetching complaints");
+        }
+
+        let complaintResponse: any = [];
+        complaints.forEach((complaint: any) => {
+            if (complaint.postAsAnonymous) {
+                complaintResponse.push({
+                    ...complaint,
+                    user: {
+                        id: complaint.user.id,
+                        name: "Anonymous",
+                    }
+                });
+            } else {
+                complaintResponse.push(complaint);
+            }
+        });
+
+        // all upvoted complaints by the currently logged in user
+        const upvotedComplaints = await prisma.upvote.findMany({
+            where: {
+                userId
+            },
+            select: {
+                complaintId: true
+            }
+        });
+
+        const complaintDetails = complaintResponse.map((complaint: any) => {
+            return {
+                id: complaint.id,
+                title: complaint.title,
+                description: complaint.description,
+                access: complaint.access,
+                postAsAnonymous: complaint.postAsAnonymous,
+                status: complaint.status,
+                actionTaken: complaint.actionTaken,
+                upvotes: complaint.totalUpvotes,
+                complainerId: complaint.userId,
+                complainerName: complaint.user.name,
+                attachments: complaint.attachments,
+                tags: complaint.tags.map((tag: any) => tag.tags.tagName),
+                assignedTo: complaint.complaintAssignment.user.name,
+                inchargeId: complaint.complaintAssignment.user.id,
+                inchargeName: complaint.complaintAssignment.user.name,
+                inchargeEmail: complaint.complaintAssignment.user.email,
+                inchargePhone: complaint.complaintAssignment.user.phoneNumber,
+                designation: complaint.complaintAssignment.user.issueIncharge.designation.designation.designationName,
+                inchargeRank: complaint.complaintAssignment.user.issueIncharge.designation.rank,
+                location: complaint.complaintAssignment.user.issueIncharge.location.locationName,
+                assignedAt: complaint.complaintAssignment.assignedAt,
+                createdAt: complaint.createdAt,
+                expiredAt: complaint.expiredAt,
+            }
+        });
+
+        res.status(200).json({
+            ok: true,
+            message: `Complaints created in last ${days} days`,
+            complaintDetails,
+            upvotedComplaints: upvotedComplaints.map((u: any) => u.complaintId),
+        });
+
+    } catch (err) {
+        res.status(400).json({
+            ok: false,
+            error: err instanceof Error ? err.message : "An error occurred while fetching complaints in last 7 days"
+        }); 
     }
 }
 
