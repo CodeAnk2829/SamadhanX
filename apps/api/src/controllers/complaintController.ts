@@ -1,6 +1,7 @@
 import { prisma } from "@repo/db/client";
 import { CreateComplaintSchema, UpdateComplaintSchema } from "@repo/types/complaintTypes";
 import { UPDATED, CLOSED, RECREATED, DELEGATED, ESCALATED, RESOLVED } from "@repo/types/wsMessageTypes";
+import e, { request } from "express";
 
 export const createComplaint = async (req: any, res: any) => {
     try {
@@ -829,21 +830,18 @@ export const getAllComplaints = async (req: any, res: any) => {
     try {
         const userId = req.user.id;
         const userRole = req.user.role;
-
+        let { requestComingFrom } = req.query;
+        
         if (!userId) {
             throw new Error("Unauthorized");
         }
 
-        let whereClause = {};
-
-        if (userRole !== "ADMIN") {
-            whereClause = {
-                access: "PUBLIC"
-            }
+        if (requestComingFrom !== "home" && requestComingFrom !== "dashboard") {
+            throw new Error("Invalid request");
         }
 
         const complaints = await prisma.complaint.findMany({
-            where: whereClause,
+            // where: whereClause,
             orderBy: {
                 createdAt: "desc" // get recent complaints first
             },
@@ -905,6 +903,7 @@ export const getAllComplaints = async (req: any, res: any) => {
         }
 
         let complaintResponse: any = [];
+
         complaints.forEach((complaint: any) => {
             if (complaint.postAsAnonymous) {
                 complaintResponse.push({
@@ -918,6 +917,15 @@ export const getAllComplaints = async (req: any, res: any) => {
                 complaintResponse.push(complaint);
             }
         });
+
+        if (userRole === "STUDENT" || userRole === "FACULTY") {
+            complaintResponse = requestComingFrom === "home"
+                ? complaintResponse.filter((complaint: any) => complaint.access === "PUBLIC")
+                : complaintResponse.filter((complaint: any) => complaint.access === "PUBLIC"
+                    || (complaint.access === "PRIVATE" && complaint.userId === req.user.id));
+        } else if (userRole === "ISSUE_INCHARGE") {
+            complaintResponse = complaintResponse.filter((complaint: any) => complaint.complaintAssignment.user.id === req.user.id);
+        }
 
         // all upvoted complaints by the currently logged in user
         const upvotedComplaints = await prisma.upvote.findMany({
@@ -1122,6 +1130,163 @@ export const getComplaintById = async (req: any, res: any) => {
     }
 }
 
+export const getComplaintsByLocation = async (req: any, res: any) => {
+    try {
+        const { locationId } = req.params;
+        const { requestComingFrom } = req.query;
+        const userRole = req.user.role;
+
+        if (requestComingFrom !== "home" && requestComingFrom !== "dashboard") {
+            throw new Error("Invalid request");
+        }
+
+        const complaints = await prisma.complaint.findMany({
+            where: {
+                complaintAssignment: {
+                    user: {
+                        issueIncharge: {
+                            locationId: parseInt(locationId)
+                        }
+                    }
+                }
+            },
+            orderBy: {
+                createdAt: "desc" // get recent complaints first
+            },
+            include: {
+                attachments: {
+                    select: {
+                        id: true,
+                        imageUrl: true
+                    }
+                },
+                tags: {
+                    select: {
+                        tags: {
+                            select: {
+                                tagName: true
+                            }
+                        }
+                    }
+                },
+                user: {
+                    select: {
+                        name: true,
+                        email: true,
+                        phoneNumber: true,
+                    }
+                },
+                complaintAssignment: {
+                    select: {
+                        assignedAt: true,
+                        user: {
+                            select: {
+                                id: true,
+                                name: true,
+                                phoneNumber: true,
+                                issueIncharge: {
+                                    select: {
+                                        designation: {
+                                            select: {
+                                                designation: {
+                                                    select: {
+                                                        designationName: true,
+                                                    }
+                                                },
+                                                rank: true,
+                                            }
+                                        },
+                                        location: true,
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+            },
+        });
+
+        if (!complaints) {
+            throw new Error("Could not fetch the required complaint");
+        }
+
+        let complaintResponse: any = [];
+
+        complaints.forEach((complaint: any) => {
+            if (complaint.postAsAnonymous) {
+                complaintResponse.push({
+                    ...complaint,
+                    user: {
+                        id: complaint.user.id,
+                        name: "Anonymous",
+                    }
+                });
+            } else {
+                complaintResponse.push(complaint);
+            }
+        });
+
+        if (userRole === "STUDENT" || userRole === "FACULTY") {
+            complaintResponse = requestComingFrom === "home"
+                ? complaintResponse.filter((complaint: any) => complaint.access === "PUBLIC")
+                : complaintResponse.filter((complaint: any) => complaint.access === "PUBLIC"
+                    || (complaint.access === "PRIVATE" && complaint.userId === req.user.id));
+        } else if (userRole === "ISSUE_INCHARGE") {
+            complaintResponse = complaintResponse.filter((complaint: any) => complaint.complaintAssignment.user.id === req.user.id);
+        }
+
+        // all upvoted complaints by the currently logged in user
+        const upvotedComplaints = await prisma.upvote.findMany({
+            where: {
+                userId: req.user.id
+            },
+            select: {
+                complaintId: true
+            }
+        });
+
+        const complaintDetails = complaintResponse.map((complaint: any) => {
+            return {
+                id: complaint.id,
+                title: complaint.title,
+                description: complaint.description,
+                access: complaint.access,
+                postAsAnonymous: complaint.postAsAnonymous,
+                status: complaint.status,
+                actionTaken: complaint.actionTaken,
+                upvotes: complaint.totalUpvotes,
+                complainerId: complaint.userId,
+                complainerName: complaint.user.name,
+                complainerEmail: complaint.user.email,
+                complainerPhone: complaint.user.phoneNumber,
+                attachments: complaint.attachments,
+                tags: complaint.tags.map((tag: any) => tag.tags.tagName),
+                assignedTo: complaint.complaintAssignment.user.name,
+                inchargeId: complaint.complaintAssignment.user.id,
+                inchargePhone: complaint.complaintAssignment.user.phoneNumber,
+                designation: complaint.complaintAssignment.user.issueIncharge.designation.designation.designationName,
+                inchargeRank: complaint.complaintAssignment.user.issueIncharge.designation.rank,
+                location: complaint.complaintAssignment.user.issueIncharge.location.locationName,
+                assignedAt: complaint.complaintAssignment.assignedAt,
+                createdAt: complaint.createdAt,
+                expiredAt: complaint.expiredAt,
+            }
+        });
+
+        res.status(200).json({
+            ok: true,
+            complaintDetails,
+            upvotedComplaints: upvotedComplaints.map((u: any) => u.complaintId),
+        });
+
+    } catch (err) {
+        res.status(400).json({
+            ok: false,
+            error: err instanceof Error ? err.message : "An error occurred while fetching the complaint at a location"
+        });
+    }
+}
+
 export const getComplaintsCreatedInLastNDays = async (req: any, res: any) => {
     try {
         const days = req.query.days;
@@ -1265,7 +1430,7 @@ export const getComplaintsCreatedInLastNDays = async (req: any, res: any) => {
         res.status(400).json({
             ok: false,
             error: err instanceof Error ? err.message : "An error occurred while fetching complaints in last 7 days"
-        }); 
+        });
     }
 }
 
