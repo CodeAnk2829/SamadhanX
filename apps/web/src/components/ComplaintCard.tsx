@@ -234,12 +234,19 @@ const ComplaintCard: React.FC<ComplaintCardProps> = ({
 
       {/* Footer */}
       <div className="flex items-center justify-between p-4 border-t border-gray-200">
-        <Badge
-          className="text-xs font-semibold px-3 py-1 rounded-full"
-          color={statusColors[complaint.status] || "gray"}
-        >
-          {complaint.status}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge
+            className="text-xs font-semibold px-3 py-1 rounded-full"
+            color={statusColors[complaint.status] || "gray"}
+          >
+            {complaint.status}
+          </Badge>
+          {complaint.updatedAt && (
+            <Badge color="gray" className="text-xs">
+              Edited
+            </Badge>
+          )}
+        </div>
 
         {showUpvote && (
           <div className="flex items-center">
