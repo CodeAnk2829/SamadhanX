@@ -1,7 +1,7 @@
 import { prisma } from "@repo/db/client";
 import { CreateComplaintSchema, UpdateComplaintSchema } from "@repo/types/complaintTypes";
-import { UPDATED, UPVOTED, DELETED } from "@repo/types/wsMessageTypes";
-import { RedisManager } from "../util/RedisManager";
+import { UPDATED, CLOSED, RECREATED, DELEGATED, ESCALATED, RESOLVED } from "@repo/types/wsMessageTypes";
+import e, { request } from "express";
 
 export const createComplaint = async (req: any, res: any) => {
     try {
@@ -42,8 +42,6 @@ export const createComplaint = async (req: any, res: any) => {
             throw new Error("No incharge found for the given location");
         }
 
-        const currentDateTime = Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000);
-
         const createComplaint = await prisma.$transaction(async (tx: any) => {
             const complaintDetails = await tx.complaint.create({
                 data: {
@@ -51,11 +49,12 @@ export const createComplaint = async (req: any, res: any) => {
                     description: parseData.data.description,
                     access: parseData.data.access,
                     postAsAnonymous: parseData.data.postAsAnonymous,
-
+                    createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                    expiredAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + 2 * 60 * 1000).toISOString(), // 7 days from now
                     complaintAssignment: {
                         create: {
                             assignedTo: issueIncharge.inchargeId,
-                            assignedAt: new Date(currentDateTime).toISOString()
+                            assignedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
                     complaintDelegation: {
@@ -67,12 +66,12 @@ export const createComplaint = async (req: any, res: any) => {
                                 {
                                     eventType: "CREATED",
                                     handledBy: req.user.id,
-                                    happenedAt: new Date(currentDateTime)
+                                    happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                                 },
                                 {
                                     eventType: "ASSIGNED",
                                     handledBy: issueIncharge.inchargeId,
-                                    happenedAt: new Date(currentDateTime)
+                                    happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                                 }
                             ]
                         }
@@ -84,7 +83,7 @@ export const createComplaint = async (req: any, res: any) => {
                         create: {
                             mood: "",
                             remarks: "",
-                            givenAt: new Date(currentDateTime)
+                            givenAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
                     user: {
@@ -99,8 +98,6 @@ export const createComplaint = async (req: any, res: any) => {
                     attachments: {
                         create: attachmentsData
                     },
-                    createdAt: new Date(currentDateTime).toISOString(),
-                    expiredAt: new Date(currentDateTime + 2 * 60 * 1000).toISOString() // 7 days from now
                 },
                 include: {
                     attachments: {
@@ -163,6 +160,32 @@ export const createComplaint = async (req: any, res: any) => {
                 throw new Error("Could not create complaint. Please try again");
             }
 
+            const notifyUserAboutCreationAndAssignment = await tx.notification.createMany({
+                data: [{
+                    userId: req.user.id,
+                    eventType: "CREATED",
+                    payload: {
+                        complaintId: complaintDetails.id,
+                        title: complaintDetails.title,
+                    },
+                    createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                }, {
+                    userId: req.user.id,
+                    eventType: "ASSIGNED",
+                    payload: {
+                        complaintId: complaintDetails.id,
+                        title: complaintDetails.title,
+                        isAssignedTo: complaintDetails.complaintAssignment.user.name,
+                        designation: complaintDetails.complaintAssignment.user.issueIncharge.designation.designation.designationName,
+                    },
+                    createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (5 * 1000)).toISOString()
+                }]
+            });
+
+            if (!notifyUserAboutCreationAndAssignment) {
+                throw new Error("Could not notify user about complaint creation and assignment.");
+            }
+
             const outboxDetails = await tx.complaintOutbox.create({
                 data: {
                     eventType: "complaint_created",
@@ -177,7 +200,7 @@ export const createComplaint = async (req: any, res: any) => {
                         rank: complaintDetails.complaintAssignment?.user?.issueIncharge?.designation.rank,
                     },
                     status: "PENDING",
-                    processAfter: new Date(currentDateTime).toISOString()
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 }
             });
 
@@ -186,6 +209,9 @@ export const createComplaint = async (req: any, res: any) => {
             }
 
             return complaintDetails;
+        }, {
+            maxWait: 5000, // default: 2000
+            timeout: 30000, // default: 5000
         });
 
 
@@ -252,6 +278,7 @@ export const closeComplaint = async (req: any, res: any) => {
                 id: complaintId
             },
             select: {
+                title: true,
                 userId: true,
                 status: true,
             }
@@ -276,27 +303,31 @@ export const closeComplaint = async (req: any, res: any) => {
                 },
                 data: {
                     status: "CLOSED",
+                    closedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
                     complaintHistory: {
                         create: {
                             eventType: "CLOSED",
                             handledBy: userId,
-                            happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                            happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
                     feedback: {
                         update: {
                             mood,
                             remarks,
-                            givenAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                            givenAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
-                    closedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
                 },
                 include: {
                     feedback: true,
                     complaintAssignment: {
                         include: {
-                            user: true,
+                            user: {
+                                omit: {
+                                    password: true,
+                                }
+                            },
                         }
                     },
                 }
@@ -327,6 +358,22 @@ export const closeComplaint = async (req: any, res: any) => {
                 throw new Error("Could not mark complaint closure due as processed");
             }
 
+            const notifyUserAboutClosure = await tx.notification.create({
+                data: {
+                    userId,
+                    eventType: CLOSED,
+                    payload: {
+                        complaintId,
+                        title: complaintDetails.title,
+                    },
+                    createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                }
+            });
+
+            if (!notifyUserAboutClosure) {
+                throw new Error("Could not notify user about complaint closure");
+            }
+
             const outboxDetails = await tx.complaintOutbox.create({
                 data: {
                     eventType: "complaint_closed",
@@ -354,6 +401,9 @@ export const closeComplaint = async (req: any, res: any) => {
             }
 
             return closeComplaint;
+        }, {
+            maxWait: 5000, // default: 2000
+            timeout: 30000, // default: 5000
         });
 
         if (!complaintClosed) {
@@ -382,7 +432,10 @@ export const deletedComplaintById = async (req: any, res: any) => {
         // check if current user is the one who created this complaint
         const doesComplaintBelongToLoggedInUser = await prisma.complaint.findUnique({
             where: { id: complaintId },
-            select: { userId: true }
+            select: {
+                userId: true,
+                status: true,
+            }
         });
 
         if (!doesComplaintBelongToLoggedInUser) {
@@ -391,6 +444,12 @@ export const deletedComplaintById = async (req: any, res: any) => {
 
         if (doesComplaintBelongToLoggedInUser.userId !== currentUserId) {
             throw new Error("Access Denied. You do not have permissions to make changes.")
+        }
+
+        if (doesComplaintBelongToLoggedInUser.status === DELEGATED ||
+            doesComplaintBelongToLoggedInUser.status === RESOLVED
+        ) {
+            throw new Error("Delete action could not be performed as complaint status is undesirable");
         }
 
         const deletedComplaint = await prisma.$transaction(async (tx: any) => {
@@ -417,17 +476,17 @@ export const deletedComplaintById = async (req: any, res: any) => {
                 throw new Error("Deletion request failed.");
             }
 
-            const updateComplaintHistory = await tx.complaintHistory.create({
-                data: {
-                    complaintId,
-                    eventType: "DELETED",
-                    handledBy: currentUserId,
-                    happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+            const deleteComplaintFromNotification = await tx.notification.deleteMany({
+                where: {
+                    payload: {
+                        path: ['complaintId'],
+                        equals: complaintId
+                    }
                 }
             });
 
-            if (!updateComplaintHistory) {
-                throw new Error("Could not update complaint history");
+            if (!deleteComplaintFromNotification) {
+                throw new Error("Could not delete all notifications of a complaint.");
             }
 
             const outboxDetails = await tx.complaintOutbox.create({
@@ -441,15 +500,40 @@ export const deletedComplaintById = async (req: any, res: any) => {
                         wasAssignedTo: complaintDeletion.complaintAssignment?.user?.id as string
                     },
                     status: "PENDING",
-                    processAfter: new Date(Date.now())
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 }
             });
+
+            // also mark escalation_due event as processed as the complaint was deleted
+            const markEscalationDueAsProcessed = await tx.complaintOutbox.updateMany({
+                where: {
+                    AND: [
+                        { eventType: "complaint_escalation_due" },
+                        {
+                            payload: {
+                                path: ['complaintId'],
+                                equals: complaintId
+                            }
+                        }
+                    ]
+                },
+                data: {
+                    status: "PROCESSED"
+                }
+            });
+
+            if (!markEscalationDueAsProcessed) {
+                throw new Error("Could not mark complaint escalation due as processed");
+            }
 
             if (!outboxDetails) {
                 throw new Error("Could not create complaint_deleted event in outbox.");
             }
 
             return complaintDeletion;
+        }, {
+            maxWait: 5000, // default: 2000
+            timeout: 30000, // default: 5000
         });
 
 
@@ -479,7 +563,8 @@ export const recreateComplaint = async (req: any, res: any) => {
         // check if the current user is the one who had raised this complaint earlier
         const relatedUserAndStatusDetails = await prisma.complaint.findUnique({
             where: { id: complaintId },
-            select: { 
+            select: {
+                title: true,
                 userId: true,
                 status: true,
                 complaintAssignment: {
@@ -529,19 +614,20 @@ export const recreateComplaint = async (req: any, res: any) => {
             throw new Error("No incharge found for the given location");
         }
 
-        const currentDateTime = Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000);
-
         const complaintRecreation = await prisma.$transaction(async (tx) => {
             const complaintDetails = await tx.complaint.update({
                 where: {
                     id: complaintId,
-                }, 
+                },
                 data: {
                     status: "RECREATED",
+                    actionTaken: false,
+                    updatedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                    expiredAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + 2 * 60 * 1000).toISOString(), // 7 days from now
                     complaintAssignment: {
                         update: {
                             assignedTo: issueIncharge.inchargeId,
-                            assignedAt: new Date(currentDateTime).toISOString()
+                            assignedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
                     complaintHistory: {
@@ -550,18 +636,16 @@ export const recreateComplaint = async (req: any, res: any) => {
                                 {
                                     eventType: "RECREATED",
                                     handledBy: req.user.id,
-                                    happenedAt: new Date(currentDateTime)
+                                    happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                                 },
                                 {
                                     eventType: "ASSIGNED",
                                     handledBy: issueIncharge.inchargeId,
-                                    happenedAt: new Date(currentDateTime)
+                                    happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                                 }
                             ]
                         }
                     },
-                    updatedAt: new Date(currentDateTime).toISOString(),
-                    expiredAt: new Date(currentDateTime + 2 * 60 * 1000).toISOString() // 7 days from now
                 },
                 include: {
                     attachments: {
@@ -624,6 +708,34 @@ export const recreateComplaint = async (req: any, res: any) => {
                 throw new Error("Complaint could not be recreated.");
             }
 
+            const notifyUserAboutRecreation = await tx.notification.createMany({
+                data: [{
+                    userId: currentUserId,
+                    eventType: RECREATED,
+                    payload: {
+                        complaintId,
+                        title: relatedUserAndStatusDetails.title,
+                        isAssignedTo: complaintDetails.complaintAssignment?.user?.name,
+                        designation: complaintDetails.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
+                    },
+                    createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                }, {
+                    userId: currentUserId,
+                    eventType: "ASSIGNED",
+                    payload: {
+                        complaintId: complaintDetails.id,
+                        title: complaintDetails.title,
+                        isAssignedTo: complaintDetails.complaintAssignment?.user?.name,
+                        designation: complaintDetails.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
+                    },
+                    createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (5 * 1000)).toISOString()
+                }]
+            });
+
+            if (!notifyUserAboutRecreation) {
+                throw new Error("Could not notify user about complaint recreation.");
+            }
+
             const outboxDetails = await tx.complaintOutbox.create({
                 data: {
                     eventType: "complaint_recreated",
@@ -638,7 +750,7 @@ export const recreateComplaint = async (req: any, res: any) => {
                         rank: complaintDetails.complaintAssignment?.user?.issueIncharge?.designation.rank,
                     },
                     status: "PENDING",
-                    processAfter: new Date(currentDateTime).toISOString()
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 }
             });
 
@@ -668,8 +780,11 @@ export const recreateComplaint = async (req: any, res: any) => {
             }
 
             return complaintDetails;
+        }, {
+            maxWait: 5000, // default: 2000
+            timeout: 30000, // default: 5000
         });
-        
+
         if (!complaintRecreation) {
             throw new Error("Could not recreate the complaint.");
         }
@@ -726,15 +841,18 @@ export const recreateComplaint = async (req: any, res: any) => {
 export const getAllComplaints = async (req: any, res: any) => {
     try {
         const userId = req.user.id;
+        const userRole = req.user.role;
+        const { requestComingFrom } = req.query;
 
         if (!userId) {
             throw new Error("Unauthorized");
         }
 
+        if (requestComingFrom !== "home" && requestComingFrom !== "dashboard") {
+            throw new Error("Invalid request");
+        }
+
         const complaints = await prisma.complaint.findMany({
-            where: {
-                access: "PUBLIC"
-            },
             orderBy: {
                 createdAt: "desc" // get recent complaints first
             },
@@ -796,6 +914,7 @@ export const getAllComplaints = async (req: any, res: any) => {
         }
 
         let complaintResponse: any = [];
+
         complaints.forEach((complaint: any) => {
             if (complaint.postAsAnonymous) {
                 complaintResponse.push({
@@ -809,6 +928,15 @@ export const getAllComplaints = async (req: any, res: any) => {
                 complaintResponse.push(complaint);
             }
         });
+
+        if (userRole === "STUDENT" || userRole === "FACULTY") {
+            complaintResponse = requestComingFrom === "home"
+                ? complaintResponse.filter((complaint: any) => complaint.access === "PUBLIC")
+                : complaintResponse.filter((complaint: any) => complaint.access === "PUBLIC"
+                    || (complaint.access === "PRIVATE" && complaint.userId === req.user.id));
+        } else if (userRole === "ISSUE_INCHARGE") {
+            complaintResponse = complaintResponse.filter((complaint: any) => complaint.complaintAssignment.user.id === req.user.id);
+        }
 
         // all upvoted complaints by the currently logged in user
         const upvotedComplaints = await prisma.upvote.findMany({
@@ -949,7 +1077,7 @@ export const getComplaintById = async (req: any, res: any) => {
             throw new Error("Could not fetch the required complaint");
         }
 
-        if (complaint.access === "PRIVATE" && userId !== complaint.userId) {
+        if ((userRole === "STUDENT" || userRole === "FACULTY") && complaint.access === "PRIVATE" && userId !== complaint.userId) {
             throw new Error("No 'Public' complaint found with the given complaint ID");
         }
 
@@ -1009,6 +1137,409 @@ export const getComplaintById = async (req: any, res: any) => {
         res.status(400).json({
             ok: false,
             error: err instanceof Error ? err.message : "An error occurred while fetching complaint"
+        });
+    }
+}
+
+export const getFilteredComplaints = async (req: any, res: any) => {
+    try {
+
+        const { requestComingFrom } = req.query;
+        const { filterByLocations, filterByTags, filterByStatus } = req.body; // { filterByLocations: int[], filterByTags: int[], filterByStatus: string[] }
+        const userRole = req.user.role;
+
+        if (requestComingFrom !== "home" && requestComingFrom !== "dashboard") {
+            throw new Error("Invalid request");
+        }
+
+        // const complaints = await prisma.complaintCategory.findMany({
+        //     where: {
+        //         AND: [
+        //             {
+        //                 complaints: {
+        //                     AND: [
+        //                         {
+        //                             complaintAssignment: {
+        //                                 user: {
+        //                                     issueIncharge: {
+        //                                         locationId: {
+        //                                             in: filterByLocations
+        //                                         }
+        //                                     }
+        //                                 }
+        //                             }
+        //                         },
+        //                         {
+        //                             status: {
+        //                                 in: filterByStatus
+        //                             }
+        //                         }
+        //                     ]
+        //                 },
+        //             }, 
+        //             {
+        //                 tagId: {
+        //                     in: filterByTags
+        //                 }
+        //             }
+        //         ]
+        //     },
+        //     orderBy: {
+        //         complaints: {
+        //             createdAt: "desc" // get recent complaints first
+        //         }
+        //     },
+        //     include: {
+        //         complaints: {
+        //             include: {
+        //                 attachments: {
+        //                     select: {
+        //                         id: true,
+        //                         imageUrl: true
+        //                     }
+        //                 },
+        //                 tags: {
+        //                     select: {
+        //                         tags: {
+        //                             select: {
+        //                                 tagName: true
+        //                             }
+        //                         }
+        //                     }
+        //                 },
+        //                 user: {
+        //                     select: {
+
+        //                         name: true,
+        //                         email: true,
+        //                         phoneNumber: true,
+        //                     }
+        //                 },
+        //                 complaintAssignment: {
+        //                     select: {
+        //                         assignedAt: true,
+        //                         user: {
+        //                             select: {
+        //                                 id: true,
+        //                                 name: true,
+        //                                 phoneNumber: true,
+        //                                 issueIncharge: {
+        //                                     select: {
+        //                                         designation: {
+        //                                             select: {
+        //                                                 designation: {
+        //                                                     select: {
+        //                                                         designationName: true,
+        //                                                     }
+        //                                                 },
+        //                                                 rank: true,
+        //                                             }
+        //                                         },
+        //                                         location: true,
+        //                                     }
+        //                                 }
+        //                             }
+        //                         }
+        //                     }
+        //                 },
+        //             },
+        //         }
+        //     }
+        // });
+
+        let complaints = await prisma.complaint.findMany({
+            orderBy: {
+                createdAt: "desc" // get recent complaints first
+            },
+            include: {
+                attachments: {
+                    select: {
+                        id: true,
+                        imageUrl: true
+                    }
+                },
+                tags: {
+                    select: {
+                        tags: true,
+                    }
+                },
+                user: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        phoneNumber: true,
+                    }
+                },
+                complaintAssignment: {
+                    select: {
+                        assignedAt: true,
+                        user: {
+                            select: {
+                                id: true,
+                                name: true,
+                                phoneNumber: true,
+                                issueIncharge: {
+                                    select: {
+                                        designation: {
+                                            select: {
+                                                designation: {
+                                                    select: {
+                                                        designationName: true,
+                                                    }
+                                                },
+                                                rank: true,
+                                            }
+                                        },
+                                        location: true,
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+            },
+        });
+
+        if (!complaints) {
+            throw new Error("Could not fetch the required complaint");
+        }
+
+        complaints = complaints.filter((complaint: any) => {
+            return (filterByLocations && filterByLocations.length > 0) ? filterByLocations.includes(complaint.complaintAssignment.user.issueIncharge.location.id) : true;
+        });
+
+        complaints = complaints.filter((complaint: any) => {
+            return (filterByTags && filterByTags.length > 0) ? complaint.tags.some((tag: any) => filterByTags.includes(tag.tags.id)) : true;
+        });
+
+        complaints = complaints.filter((complaint: any) => {
+            return (filterByStatus && filterByStatus.length > 0) ? filterByStatus.includes(complaint.status) : true;
+        });
+
+        let complaintResponse: any = [];
+
+        complaints.forEach((complaint: any) => {
+            if (complaint.postAsAnonymous) {
+                complaintResponse.push({
+                    ...complaint,
+                    user: {
+                        id: complaint.user.id,
+                        name: "Anonymous",
+                        email: complaint.user.email,
+                        phoneNumber: complaint.user.phoneNumber
+                    }  
+                });
+            } else {
+                complaintResponse.push(complaint);
+            }
+        });
+        
+        if (userRole === "STUDENT" || userRole === "FACULTY") {
+            complaintResponse = (requestComingFrom === "home")
+                ? complaintResponse.filter((complaint: any) => complaint.access === "PUBLIC")
+                : complaintResponse.filter((complaint: any) => complaint.access === "PUBLIC"
+                    || (complaint.access === "PRIVATE" && complaint.userId === req.user.id));
+        } else if (userRole === "ISSUE_INCHARGE") {
+            complaintResponse = complaintResponse.filter((complaint: any) => complaint.complaintAssignment.user.id === req.user.id);
+        }
+
+        // all upvoted complaints by the currently logged in user
+        const upvotedComplaints = await prisma.upvote.findMany({
+            where: {
+                userId: req.user.id
+            },
+            select: {
+                complaintId: true
+            }
+        });
+
+        const complaintDetails = complaintResponse.map((complaint: any) => {
+            return {
+                id: complaint.complaintId,
+                title: complaint.title,
+                description: complaint.description,
+                access: complaint.access,
+                postAsAnonymous: complaint.postAsAnonymous,
+                status: complaint.status,
+                actionTaken: complaint.actionTaken,
+                upvotes: complaint.totalUpvotes,
+                complainerId: complaint.userId,
+                complainerName: complaint.user.name,
+                complainerEmail: complaint.user.email,
+                complainerPhone: complaint.user.phoneNumber,
+                attachments: complaint.attachments.map((attachment: any) => attachment.imageUrl),
+                tags: complaint.tags.map((tag: any) => tag.tags.tagName),
+                assignedTo: complaint.complaintAssignment.user.name,
+                inchargeId: complaint.complaintAssignment.user.id,
+                inchargePhone: complaint.complaintAssignment.user.phoneNumber,
+                designation: complaint.complaintAssignment.user.issueIncharge.designation.designation.designationName,
+                inchargeRank: complaint.complaintAssignment.user.issueIncharge.designation.rank,
+                location: complaint.complaintAssignment.user.issueIncharge.location.locationName,
+                assignedAt: complaint.complaintAssignment.assignedAt,
+                createdAt: complaint.createdAt,
+                closedAt: complaint.closedAt,
+                expiredAt: complaint.expiredAt,
+            }
+        });
+
+        res.status(200).json({
+            ok: true,
+            complaintDetails,
+            upvotedComplaints: upvotedComplaints.map((u: any) => u.complaintId),
+        });
+
+    } catch (err) {
+        res.status(400).json({
+            ok: false,
+            error: err instanceof Error ? err.message : "An error occurred while fetching the complaint at a location"
+        });
+    }
+}
+
+export const getComplaintsCreatedInLastNDays = async (req: any, res: any) => {
+    try {
+        const days = req.query.days;
+        const userId = req.user.id;
+
+        if (!days) {
+            throw new Error("Please provide the number of days");
+        }
+
+        if (days < 0 || days > 90) {
+            throw new Error("Days should be between 0 and 90");
+        }
+
+        const complaints = await prisma.complaint.findMany({
+            where: {
+                createdAt: {
+                    gte: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) - (days * 24 * 60 * 60 * 1000))
+                }
+            },
+            orderBy: {
+                createdAt: "desc" // get recent complaints first
+            },
+            include: {
+                attachments: {
+                    select: {
+                        id: true,
+                        imageUrl: true
+                    }
+                },
+                tags: {
+                    select: {
+                        tags: {
+                            select: {
+                                tagName: true
+                            }
+                        }
+                    }
+                },
+                user: {
+                    select: {
+                        id: true,
+                        name: true,
+                    }
+                },
+                complaintAssignment: {
+                    select: {
+                        assignedAt: true,
+                        user: {
+                            select: {
+                                id: true,
+                                name: true,
+                                phoneNumber: true,
+                                email: true,
+                                issueIncharge: {
+                                    select: {
+                                        designation: {
+                                            select: {
+                                                designation: {
+                                                    select: {
+                                                        designationName: true,
+                                                    }
+                                                },
+                                                rank: true,
+                                            }
+                                        },
+                                        location: true,
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+            }
+        });
+
+        if (!complaints) {
+            throw new Error("An error occurred while fetching complaints");
+        }
+
+        let complaintResponse: any = [];
+        complaints.forEach((complaint: any) => {
+            if (complaint.postAsAnonymous) {
+                complaintResponse.push({
+                    ...complaint,
+                    user: {
+                        id: complaint.user.id,
+                        name: "Anonymous",
+                    }
+                });
+            } else {
+                complaintResponse.push(complaint);
+            }
+        });
+
+        // all upvoted complaints by the currently logged in user
+        const upvotedComplaints = await prisma.upvote.findMany({
+            where: {
+                userId
+            },
+            select: {
+                complaintId: true
+            }
+        });
+
+        const complaintDetails = complaintResponse.map((complaint: any) => {
+            return {
+                id: complaint.id,
+                title: complaint.title,
+                description: complaint.description,
+                access: complaint.access,
+                postAsAnonymous: complaint.postAsAnonymous,
+                status: complaint.status,
+                actionTaken: complaint.actionTaken,
+                upvotes: complaint.totalUpvotes,
+                complainerId: complaint.userId,
+                complainerName: complaint.user.name,
+                attachments: complaint.attachments,
+                tags: complaint.tags.map((tag: any) => tag.tags.tagName),
+                assignedTo: complaint.complaintAssignment.user.name,
+                inchargeId: complaint.complaintAssignment.user.id,
+                inchargeName: complaint.complaintAssignment.user.name,
+                inchargeEmail: complaint.complaintAssignment.user.email,
+                inchargePhone: complaint.complaintAssignment.user.phoneNumber,
+                designation: complaint.complaintAssignment.user.issueIncharge.designation.designation.designationName,
+                inchargeRank: complaint.complaintAssignment.user.issueIncharge.designation.rank,
+                location: complaint.complaintAssignment.user.issueIncharge.location.locationName,
+                assignedAt: complaint.complaintAssignment.assignedAt,
+                createdAt: complaint.createdAt,
+                expiredAt: complaint.expiredAt,
+            }
+        });
+
+        res.status(200).json({
+            ok: true,
+            message: `Complaints created in last ${days} days`,
+            complaintDetails,
+            upvotedComplaints: upvotedComplaints.map((u: any) => u.complaintId),
+        });
+
+    } catch (err) {
+        res.status(400).json({
+            ok: false,
+            error: err instanceof Error ? err.message : "An error occurred while fetching complaints in last 7 days"
         });
     }
 }
@@ -1126,8 +1657,8 @@ export const getComplaintHistory = async (req: any, res: any) => {
                         expiredAt: history.complaint.expiredAt
                     });
                     break;
-                
-                case "DELEGATED": 
+
+                case "DELEGATED":
                     response.push({
                         delegatedTo: history.user.name,
                         occupation: history.user.resolver.occupation.occupationName,
@@ -1144,7 +1675,7 @@ export const getComplaintHistory = async (req: any, res: any) => {
                         expiredAt: history.complaint.expiredAt
                     });
                     break;
-                
+
                 case "RESOLVED":
                     response.push({
                         resolvedBy: history.user.name,
@@ -1153,7 +1684,7 @@ export const getComplaintHistory = async (req: any, res: any) => {
                     });
                     break;
 
-                case "CLOSED": 
+                case "CLOSED":
                     response.push({
                         closedBy: history.handledBy,
                         closedAt: history.happenedAt
@@ -1364,7 +1895,7 @@ export const updateComplaintById = async (req: any, res: any) => {
                 deleteMany: [{ complaintId }], // same as tags
                 create: attachmentsData
             },
-            updatedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+            updatedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
         }
 
         const updateDetails = await prisma.$transaction(async (tx: any) => {
@@ -1448,7 +1979,7 @@ export const updateComplaintById = async (req: any, res: any) => {
                         updatedAt: updateComplaint.updatedAt,
                     },
                     status: "PENDING",
-                    processAfter: new Date(Date.now())
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 }
             });
 
@@ -1457,6 +1988,9 @@ export const updateComplaintById = async (req: any, res: any) => {
             }
 
             return updateComplaint;
+        }, {
+            maxWait: 5000, // default: 2000
+            timeout: 30000, // default: 5000
         });
 
 
@@ -1523,7 +2057,6 @@ export const updateComplaintById = async (req: any, res: any) => {
 
 export const upvoteComplaint = async (req: any, res: any) => {
     try {
-        const redisClient = RedisManager.getInstance();
         const complaintId: string = req.params.id;
         const userId: string = req.user.id;
 
@@ -1616,7 +2149,7 @@ export const upvoteComplaint = async (req: any, res: any) => {
                         isAssignedTo: upvoteComplaint.complaintAssignment?.user?.id as string,
                     },
                     status: "PENDING",
-                    processAfter: new Date(Date.now())
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 }
             });
 
@@ -1625,6 +2158,9 @@ export const upvoteComplaint = async (req: any, res: any) => {
             }
 
             return upvoteComplaint;
+        }, {
+            maxWait: 5000, // default: 2000
+            timeout: 30000, // default: 5000
         });
 
         if (!upvotes) {

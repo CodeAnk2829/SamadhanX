@@ -1,13 +1,9 @@
 import { prisma } from "@repo/db/client";
 import { DelegateSchema } from "@repo/types/inchargeTypes";
-import { RedisManager } from "../util/RedisManager";
-import { DELEGATED, ESCALATED } from "@repo/types/wsMessageTypes";
-import { complaintRouter } from "../routes/complaint";
-import { sendSMS } from "@repo/twilio/sendSms";
+import { DELEGATED, ESCALATED, RESOLVED } from "@repo/types/wsMessageTypes";
 
 export const delegateComplaint = async (req: any, res: any) => {
     try {
-        const redisClient = RedisManager.getInstance();
         const body = req.body // { complaintId: string, resolverId: string }
         const parseData = DelegateSchema.safeParse(body);
         const currentInchargeId = req.user.id;
@@ -68,7 +64,7 @@ export const delegateComplaint = async (req: any, res: any) => {
         if (complaintDetails.complaintAssignment?.user?.id !== currentInchargeId) {
             throw new Error("You are not assigned to this complaint.");
         }
-        
+
         // check whether the complaint has already delegated
         if (complaintDetails.status === "DELEGATED") {
             throw new Error(`This complaint has already been delegated at ${complaintDetails.complaintDelegation?.delegatedAt}`)
@@ -78,7 +74,7 @@ export const delegateComplaint = async (req: any, res: any) => {
         if (complaintDetails.status === "CLOSED" || complaintDetails.status === "RESOLVED") {
             throw new Error("This complaint is already resolved or closed.");
         }
-        
+
         console.log("delegation started");
         const delegate = await prisma.$transaction(async (tx: any) => {
             // Update complaint delegation
@@ -88,7 +84,7 @@ export const delegateComplaint = async (req: any, res: any) => {
                 },
                 data: {
                     delegateTo: resolverId,
-                    delegatedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                    delegatedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 },
                 include: {
                     complaint: {
@@ -132,9 +128,42 @@ export const delegateComplaint = async (req: any, res: any) => {
                         create: {
                             eventType: "DELEGATED",
                             handledBy: resolverId,
-                            happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                            happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
+                }, 
+                include: {
+                    complaintAssignment: {
+                        select: {
+                            assignedAt: true,
+                            user: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    phoneNumber: true,
+                                    issueIncharge: {
+                                        select: {
+                                            designation: {
+                                                select: {
+                                                    designation: {
+                                                        select: {
+                                                            designationName: true,
+                                                        }
+                                                    },
+                                                    rank: true,
+                                                }
+                                            },
+                                            location: {
+                                                select: {
+                                                    locationName: true,
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             })
 
@@ -142,22 +171,48 @@ export const delegateComplaint = async (req: any, res: any) => {
                 throw new Error("Could not update complaint status as delegated.");
             }
 
+            const notifyUserAboutDelegation = await tx.notification.create({
+                data: {
+                    userId: complaintDetails.userId,
+                    eventType: DELEGATED,
+                    payload: {
+                        complaintId: complaintDetails.id,
+                        title: complaintDetails.title,
+                        delegatedTo: complaintDelegation.user?.name,
+                        delegatedBy: currentInchargeId,
+                        occupation: complaintDelegation.user?.resolver?.occupation?.occupationName,
+                        designation: complaintDetails.complaintAssignment?.user?.issueIncharge?.designation?.designation?.designationName,
+                    },
+                    createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                }
+            });
+
+            if (!notifyUserAboutDelegation) {
+                throw new Error("Could not notify user about delegation");
+            }
+
             const outboxDetails = await tx.complaintOutbox.create({
                 data: {
-                    eventType: "complaint_delegated",
+                    eventType: "notify_resolver",
                     payload: {
                         complaintId,
                         complainerId: complaintDetails.userId,
-                        access: updateComplaintAsDelegated.access,
+                        access: complaintDetails.access,
                         title: updateComplaintAsDelegated.title,
+                        description: updateComplaintAsDelegated.description,
                         isAssignedTo: currentInchargeId,
+                        inchargePhoneNumber: updateComplaintAsDelegated.complaintAssignment?.user?.phoneNumber,
+                        inchargeName: updateComplaintAsDelegated.complaintAssignment?.user?.name,
+                        inchargeDesignation: updateComplaintAsDelegated.complaintAssignment?.user?.issueIncharge?.designation?.designation?.designationName,
+                        location: updateComplaintAsDelegated.complaintAssignment?.user?.issueIncharge?.location?.locationName,
                         delegatedTo: complaintDelegation.delegateTo,
                         resolverName: complaintDelegation.user?.name,
+                        resolverPhoneNumber: complaintDelegation.user?.phoneNumber,
                         occupation: complaintDelegation.user?.resolver?.occupation?.occupationName,
                         delegatedAt: complaintDelegation.delegatedAt
                     },
                     status: "PENDING",
-                    processAfter: new Date(Date.now())
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 }
             });
 
@@ -187,6 +242,9 @@ export const delegateComplaint = async (req: any, res: any) => {
             }
 
             return complaintDelegation;
+        }, {
+            maxWait: 5000, // default: 2000
+            timeout: 30000, // default: 5000
         });
 
         if (!delegate) {
@@ -310,17 +368,17 @@ export const escalateComplaint = async (req: any, res: any) => {
                     complaintAssignment: {
                         update: {
                             assignedTo: nextIncharge.incharge.id,
-                            assignedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                            assignedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
                     complaintHistory: {
                         create: {
                             eventType: "ESCALATED",
                             handledBy: nextIncharge.incharge.id,
-                            happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                            happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
-                    expiredAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString() // 2 mins after current time
+                    expiredAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString(), // 2 mins after current time
                 },
                 include: {
                     attachments: {
@@ -382,6 +440,24 @@ export const escalateComplaint = async (req: any, res: any) => {
                 throw new Error("Could not escalate a complaint");
             }
 
+            const notifyUserAboutEscalation = await tx.notification.create({
+                data: {
+                    userId: complaintEscalation.userId,
+                    eventType: ESCALATED,
+                    payload: {
+                        complaintId: complaintEscalation.id,
+                        title: complaintEscalation.title,
+                        isEscalatedTo: complaintEscalation.complaintAssignment?.user?.name,
+                        designation: complaintEscalation.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
+                    },
+                    createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                }
+            });
+
+            if (!notifyUserAboutEscalation) {
+                throw new Error("Could not notify user about escalation");
+            }
+
             const markEscalationDueAsProcessed = await tx.complaintOutbox.updateMany({
                 where: {
                     AND: [
@@ -417,7 +493,7 @@ export const escalateComplaint = async (req: any, res: any) => {
                         designation: complaintEscalation.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
                     },
                     status: "PENDING",
-                    processAfter: new Date(Date.now())
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 }, {
                     eventType: "complaint_escalation_due",
                     payload: {
@@ -428,7 +504,7 @@ export const escalateComplaint = async (req: any, res: any) => {
                         rank: nextIncharge.designation.rank, // rank of currently escalated incharge
                     },
                     status: "PENDING",
-                    processAfter: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000))
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString()
                 }]
             });
 
@@ -437,6 +513,9 @@ export const escalateComplaint = async (req: any, res: any) => {
             }
 
             return complaintEscalation;
+        }, {
+            maxWait: 5000, // default: 2000
+            timeout: 30000, // default: 5000
         });
 
         if (!escalatedComplaint) {
@@ -476,7 +555,9 @@ export const getActiveComplaintsAssignedToIncharge = async (req: any, res: any) 
 
         const complaints = await prisma.complaint.findMany({
             where: {
-                status: "ASSIGNED",
+                status: {
+                    in: ["ASSIGNED", "RECREATED"]
+                },
                 complaintAssignment: {
                     assignedTo: currentIncharge.id
                 }
@@ -543,7 +624,7 @@ export const getActiveComplaintsAssignedToIncharge = async (req: any, res: any) 
                 actionTaken: complaint.actionTaken,
                 upvotes: complaint.totalUpvotes,
                 complainerId: complaint.userId,
-                complainerName: complaint.user.name,
+                complainerName: complaint.postAsAnonymous ? "Anonymous" : complaint.user.name,
                 attachments: complaint.attachments,
                 tags: complaint.tags.map((tag: any) => tag.tags.tagName),
                 location: complaint.complaintAssignment.user.issueIncharge.location.locationName,
@@ -562,6 +643,100 @@ export const getActiveComplaintsAssignedToIncharge = async (req: any, res: any) 
         res.status(400).json({
             ok: false,
             error: err instanceof Error ? err.message : "An error occurred while fetching complaints."
+        });
+    }
+}
+
+export const getAllComplaintsForWhichActionHasTaken = async (req: any, res: any) => {
+    try {
+        const currentInchargeId = req.user.id;
+
+        const complaints = await prisma.complaint.findMany({
+            where: {
+                status: {
+                    in: ["DELEGATED", "RESOLVED", "CLOSED"]
+                },
+                complaintAssignment: {
+                    assignedTo: currentInchargeId
+                }
+            },
+            orderBy: {
+                createdAt: "desc"
+            },
+            include: {
+                complaintAssignment: {
+                    select: {
+                        assignedAt: true,
+                        user: {
+                            select: {
+                                issueIncharge: {
+                                    select: {
+                                        location: {
+                                            select: {
+                                                locationName: true,
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                attachments: {
+                    select: {
+                        id: true,
+                        imageUrl: true
+                    }
+                },
+                tags: {
+                    select: {
+                        tags: {
+                            select: {
+                                tagName: true
+                            }
+                        }
+                    }
+                },
+                user: {
+                    select: {
+                        name: true,
+                        email: true,
+                        phoneNumber: true,
+                    }
+                },
+            }
+        });
+
+        if (!complaints) {
+            throw new Error("Could not find complaints assigned to you.");
+        }
+
+        const complaintDetails = complaints.map((complaint) => ({
+            id: complaint.id,
+            title: complaint.title,
+            description: complaint.description,
+            access: complaint.access,
+            postAsAnonymous: complaint.postAsAnonymous,
+            status: complaint.status,
+            actionTaken: complaint.actionTaken,
+            upvotes: complaint.totalUpvotes,
+            complainerId: complaint.userId,
+            complainerName: complaint.postAsAnonymous ? "Anonymous" : complaint.user.name,
+            attachments: complaint.attachments,
+            tags: complaint.tags.map((tag) => tag.tags.tagName),
+            locationAssignedToIncharge: complaint.complaintAssignment?.user?.issueIncharge?.location.locationName,
+            assignedAt: complaint.complaintAssignment?.assignedAt,
+            createdAt: complaint.createdAt,
+        }));
+
+        res.status(200).json({
+            ok: true,
+            complaintDetails
+        });
+    } catch (err) {
+        res.status(400).json({
+            ok: false,
+            error: err instanceof Error ? err.message : "An error occurred while fetching the catered complaints complaints."
         });
     }
 }
@@ -637,7 +812,7 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
                 },
                 data: {
                     resolvedBy: currentInchargeId,
-                    resolvedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                    resolvedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 },
                 select: {
                     complaint: {
@@ -673,7 +848,7 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
                         create: {
                             eventType: "RESOLVED",
                             handledBy: currentInchargeId,
-                            happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                            happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                         }
                     },
                 }
@@ -681,6 +856,24 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
 
             if (!markAsResolved) {
                 throw new Error("Could not mark the complaint as resolved");
+            }
+
+            const notifyUserAboutResolution = await tx.notification.create({
+                data: {
+                    userId: complaintResolution.complaint.userId,
+                    eventType: RESOLVED,
+                    payload: {
+                        complaintId: complaintDetails.id,
+                        title: complaintDetails.title,
+                        resolvedBy: complaintDetails.complaintAssignment?.user?.name,
+                        designation: complaintDetails.complaintAssignment?.user?.issueIncharge?.designation?.designation?.designationName,
+                    },
+                    createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                }
+            });
+
+            if (!notifyUserAboutResolution) {
+                throw new Error("Could not notify user about complaint resolution.");
             }
 
             const outboxDetails = await tx.complaintOutbox.createMany({
@@ -697,26 +890,26 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
                         resolvedAt: complaintResolution.resolvedAt,
                     },
                     status: "PENDING",
-                    processAfter: new Date(Date.now())
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                 }, {
-                        eventType: "complaint_closure_due",
-                        payload: {
-                            complaintId,
-                            complainerId: complaintResolution.complaint.userId,
-                            isAssignedTo: complaintDetails.complaintAssignment?.user?.id,
-                            access: complaintDetails.access,
-                            title: complaintDetails.title,
-                            closedAt: complaintDetails.closedAt,
-                            feedback: {
-                                id: complaintDetails.feedback?.id,
-                                mood: complaintDetails.feedback?.mood,
-                                remarks: complaintDetails.feedback?.remarks,
-                                givenAt: complaintDetails.feedback?.givenAt,
-                            }
-                        },
-                        status: "PENDING",
-                        processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString()
-                    }]
+                    eventType: "complaint_closure_due",
+                    payload: {
+                        complaintId,
+                        complainerId: complaintResolution.complaint.userId,
+                        isAssignedTo: complaintDetails.complaintAssignment?.user?.id,
+                        access: complaintDetails.access,
+                        title: complaintDetails.title,
+                        closedAt: complaintDetails.closedAt,
+                        feedback: {
+                            id: complaintDetails.feedback?.id,
+                            mood: complaintDetails.feedback?.mood,
+                            remarks: complaintDetails.feedback?.remarks,
+                            givenAt: complaintDetails.feedback?.givenAt,
+                        }
+                    },
+                    status: "PENDING",
+                    processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString()
+                }]
             });
 
             if (!outboxDetails) {
@@ -746,6 +939,9 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
 
 
             return complaintResolution;
+        }, {
+            maxWait: 5000, // default: 2000
+            timeout: 30000, // default: 5000
         });
 
         if (!resolvedComplaint) {
@@ -768,24 +964,6 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
         res.status(400).json({
             ok: false,
             error: err instanceof Error ? err.message : "An error occurred while marking the complaint as resolved."
-        });
-    }
-}
-
-export const scheduleNotification = async (req: any, res: any) => {
-    try {
-        console.log("we reached here");
-        const result = await sendSMS(["+919341211274"], "Hello, this is a test message from the complaint management system.");
-        console.log(result);
-        res.status(200).json({
-            ok: true,
-            message: "Notification sent successfully."
-        });
-        
-    } catch (err) {
-        res.status(400).json({
-            ok: false,
-            error: err instanceof Error ? err.message : "An error occurred while sending out notification."
         });
     }
 }

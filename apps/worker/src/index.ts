@@ -1,5 +1,6 @@
 import { prisma } from "@repo/db/client";
 import { RedisClient } from "@repo/redis/client";
+import { notifyViaSms } from "./notify";
 
 async function startWorker() {
     try {
@@ -19,13 +20,10 @@ async function startWorker() {
                     result = event;
                 }
 
-                // TODO: check whether the event is "closed" or "escalated" then perform actions
-                // mark closure_due as processed inside the close api
-
                 const jsonData = JSON.parse(result as string);
 
                 if (jsonData.eventType === "escalation") {
-                    // find the next incharge
+                    // find the next incharge location-wise
                     const nextIncharge = await prisma.issueIncharge.findFirst({
                         where: {
                             locationId: jsonData.locationId,
@@ -69,17 +67,17 @@ async function startWorker() {
                                 complaintAssignment: {
                                     update: {
                                         assignedTo: nextIncharge.incharge.id,
-                                        assignedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                                        assignedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                                     }
                                 },
                                 complaintHistory: {
                                     create: {
                                         eventType: "ESCALATED",
                                         handledBy: nextIncharge.incharge.id,
-                                        happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                                        happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                                     }
                                 },
-                                expiredAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString() // 2 mins after current time
+                                expiredAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString() // 2 mins after current time
                             },
                             include: {
                                 attachments: {
@@ -142,6 +140,24 @@ async function startWorker() {
                             throw new Error("escalation failed");
                         }
 
+                        const notifyUserAboutEscalation = await tx.notification.create({
+                            data: {
+                                userId: escalatedComplaint.userId,
+                                eventType: "ESCALATED",
+                                payload: {
+                                    complaintId: escalatedComplaint.id,
+                                    title: escalatedComplaint.title,
+                                    isEscalatedTo: escalatedComplaint.complaintAssignment?.user?.name,
+                                    designation: escalatedComplaint.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
+                                },
+                                createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                            }
+                        });
+
+                        if (!notifyUserAboutEscalation) {
+                            throw new Error("Could not notify user about escalation");
+                        }
+
                         const storeComplaintToPublishEscalation = await tx.complaintOutbox.createMany({
                             data: [{
                                 eventType: "complaint_escalated",
@@ -156,7 +172,7 @@ async function startWorker() {
                                     designation: escalatedComplaint.complaintAssignment?.user?.issueIncharge?.designation.designation.designationName,
                                 },
                                 status: "PENDING",
-                                processAfter: new Date(Date.now())
+                                processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                             }, {
                                 eventType: "complaint_escalation_due",
                                 payload: {
@@ -167,7 +183,7 @@ async function startWorker() {
                                     rank: nextIncharge.designation.rank,
                                 },
                                 status: "PENDING",
-                                processAfter: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000))
+                                processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) + (2 * 60 * 1000)).toISOString()
                             }]
                         });
 
@@ -194,17 +210,17 @@ async function startWorker() {
                                 complaintHistory: {
                                     create: {
                                         eventType: "CLOSED",
-                                        happenedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                                        happenedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                                     }
                                 },
                                 feedback: {
                                     update: {
                                         mood: "",
                                         remarks: "No feedback",
-                                        givenAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                                        givenAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                                     }
                                 },
-                                closedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                                closedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
                             }
                         });
 
@@ -231,6 +247,22 @@ async function startWorker() {
 
                         if (!markClosureDueAsProcessed) {
                             throw new Error("Could not mark complaint closure due as processed");
+                        }
+
+                        const notifyUserAboutClosure = await tx.notification.create({
+                            data: {
+                                userId: jsonData.complainerId,
+                                eventType: "CLOSED",
+                                payload: {
+                                    complaintId: jsonData.complaintId,
+                                    title: jsonData.title,
+                                },
+                                createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                            }
+                        });
+
+                        if (!notifyUserAboutClosure) {
+                            throw new Error("Could not notify user about complaint closure");
                         }
 
                         const outboxDetails = await tx.complaintOutbox.create({
@@ -267,10 +299,48 @@ async function startWorker() {
                     }
 
                     console.log("Complaint closed successfully");
+                } else if (jsonData.eventType === "resolver_notification") {
+                    // notify the resolver via sms about the complaint with the necessary details
+                    const resolverContact = `+91${jsonData.resolverPhoneNumber}`;
+                    const response = await notifyViaSms([resolverContact],
+                        `Hello ${jsonData.resolverName}, You have a new complaint assigned to you, Title: ${jsonData.title}, Location: ${jsonData.location}, Incharge Details: ${jsonData.inchargeName} (${jsonData.inchargeDesignation}), ${jsonData.inchargePhoneNumber}`
+                    );
+
+                    console.log(response);
+
+                    if (!response) {
+                        throw new Error("Could not send SMS to resolver. Trying again...");
+                    }
+
+                    // store delegation event in outbox for further propagation
+                    const storeDelegationEvent = await prisma.complaintOutbox.create({
+                        data: {
+                            eventType: "complaint_delegated",
+                            payload: {
+                                complaintId: jsonData.complaintId,
+                                complainerId: jsonData.complainerId,
+                                access: jsonData.access,
+                                title: jsonData.title,
+                                isAssignedTo: jsonData.isAssignedTo,
+                                delegatedTo: jsonData.resolverId,
+                                resolverName: jsonData.resolverName,
+                                occupation: jsonData.occupation,
+                                delegatedAt: jsonData.delegatedAt,
+                            },
+                            status: "PENDING",
+                            processAfter: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString()
+                        }
+                    });
+
+                    if (!storeDelegationEvent) {
+                        throw new Error("Could not store delegation event in outbox");
+                    }
+
+                    console.log("Delegation event stored in outbox successfully");
+
                 } else {
                     throw new Error("Invalid eventType");
                 }
-
 
                 await consumer.lRem("worker-queue", -1, result as string);
                 await new Promise((resolve) => setTimeout(resolve, 5000));

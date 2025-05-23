@@ -93,25 +93,29 @@ async function main() {
                 email: "admin@gmail.com",
                 phoneNumber: "0000000000",
                 password: bcrypt.hashSync("test@123", 10),
-                role: "ADMIN"
+                role: "ADMIN",
+                createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
             }, {
                 name: "Ankit",
                 email: "ankit@gmail.com",
                 phoneNumber: "2222222222",
                 password: bcrypt.hashSync("test@123", 10),
-                role: "STUDENT"
+                role: "STUDENT",
+                createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
             }, {
                 name: "Suhaani",
                 email: "suhaani@gmail.com",
                 phoneNumber: "2222222221",
                 password: bcrypt.hashSync("test@123", 10),
-                role: "STUDENT"
+                role: "STUDENT",
+                createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
             }, {
                 name: "Zanjabila",
                 email: "zanja@gmail.com",
                 phoneNumber: "2222222223",
                 password: bcrypt.hashSync("test@123", 10),
-                role: "FACULTY"
+                role: "FACULTY",
+                createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
             },]
         });
 
@@ -214,8 +218,8 @@ async function main() {
                         }
                     }
                 },
-                createdAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
-                updatedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                updatedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
             },
         });
 
@@ -244,8 +248,8 @@ async function main() {
                         }
                     }
                 },
-                createdAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
-                updatedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                updatedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
             },
         });
 
@@ -275,8 +279,8 @@ async function main() {
                         }
                     }
                 },
-                createdAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
-                updatedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                updatedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
             },
         });
 
@@ -305,8 +309,8 @@ async function main() {
                         }
                     }
                 },
-                createdAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
-                updatedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                updatedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
             },
         });
 
@@ -336,8 +340,8 @@ async function main() {
                         }
                     }
                 },
-                createdAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
-                updatedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                updatedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
             },
         });
 
@@ -366,8 +370,8 @@ async function main() {
                         }
                     }
                 },
-                createdAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
-                updatedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                updatedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
             },
         });
 
@@ -397,8 +401,8 @@ async function main() {
                         }
                     }
                 },
-                createdAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
-                updatedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                updatedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
             },
         });
 
@@ -427,8 +431,8 @@ async function main() {
                         }
                     }
                 },
-                createdAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
-                updatedAt: new Date(new Date(Date.now()).getTime() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                createdAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
+                updatedAt: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000)).toISOString(),
             },
         });
 
@@ -436,189 +440,6 @@ async function main() {
             throw new Error("Could not assign cleaner");
         }
 
-        // create some complaints
-        // find the least ranked incharge of the hostel of the given location
-        const issueIncharge = await prisma.issueIncharge.findFirst({
-            where: {
-                locationId: 1
-            },
-            orderBy: {
-                designation: {
-                    rank: "desc"
-                }
-            },
-            select: {
-                inchargeId: true
-            }
-        });
-
-        if (!issueIncharge) {
-            throw new Error("No incharge found for the given location");
-        }
-
-        // find a student 
-        const firstStudent = await prisma.user.findFirst({
-            where: {
-                role: "STUDENT",
-            },
-            select: {
-                id: true,
-            }
-        });
-
-        if (!firstStudent) {
-            throw new Error("Could not find first student");
-        }
-
-        const currentDateTime = Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000);
-
-        const createComplaint = await prisma.$transaction(async (tx: any) => {
-            const complaintDetails = await tx.complaint.create({
-                data: {
-                    title: "Washroom is not cleaned.",
-                    description: "For the past 3 days washroom is not cleaned but no action has been taken yet",
-                    access: "PUBLIC",
-                    postAsAnonymous: false,
-                    complaintAssignment: {
-                        create: {
-                            assignedTo: issueIncharge.inchargeId,
-                            assignedAt: new Date(currentDateTime).toISOString()
-                        }
-                    },
-                    complaintDelegation: {
-                        create: {}
-                    },
-                    complaintHistory: {
-                        createMany: {
-                            data: [
-                                {
-                                    eventType: "CREATED",
-                                    handledBy: firstStudent.id,
-                                    happenedAt: new Date(currentDateTime)
-                                },
-                                {
-                                    eventType: "ASSIGNED",
-                                    handledBy: issueIncharge.inchargeId,
-                                    happenedAt: new Date(currentDateTime)
-                                }
-                            ]
-                        }
-                    },
-                    complaintResolution: {
-                        create: {}
-                    },
-                    feedback: {
-                        create: {
-                            mood: "",
-                            remarks: "",
-                            givenAt: new Date(currentDateTime)
-                        }
-                    },
-                    user: {
-                        connect: {
-                            id: firstStudent.id
-                        }
-                    },
-                    status: "ASSIGNED",
-                    tags: {
-                        create: []
-                    },
-                    attachments: {
-                        create: []
-                    },
-                    createdAt: new Date(currentDateTime).toISOString(),
-                    expiredAt: new Date(currentDateTime + 2 * 60 * 1000).toISOString() // 7 days from now
-                },
-                include: {
-                    attachments: {
-                        select: {
-                            id: true,
-                            imageUrl: true
-                        }
-                    },
-                    tags: {
-                        select: {
-                            tags: {
-                                select: {
-                                    tagName: true
-                                }
-                            }
-                        }
-                    },
-                    user: {
-                        select: {
-                            id: true,
-                            name: true,
-                        }
-                    },
-                    complaintAssignment: {
-                        select: {
-                            assignedAt: true,
-                            user: {
-                                select: {
-                                    id: true,
-                                    name: true,
-                                    phoneNumber: true,
-                                    issueIncharge: {
-                                        select: {
-                                            designation: {
-                                                select: {
-                                                    designation: {
-                                                        select: {
-                                                            designationName: true,
-                                                        }
-                                                    },
-                                                    rank: true,
-                                                }
-                                            },
-                                            location: {
-                                                select: {
-                                                    id: true,
-                                                    locationName: true,
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                }
-            });
-
-            if (!complaintDetails) {
-                throw new Error("Could not create complaint. Please try again");
-            }
-
-            const outboxDetails = await tx.complaintOutbox.create({
-                data: {
-                    eventType: "complaint_created",
-                    payload: {
-                        complaintId: complaintDetails.id,
-                        complainerId: complaintDetails.userId,
-                        access: complaintDetails.access,
-                        title: complaintDetails.title,
-                        isAssignedTo: complaintDetails.complaintAssignment?.user?.id,
-                        escalation_due_at: complaintDetails.expiredAt,
-                        locationId: complaintDetails.complaintAssignment?.user?.issueIncharge?.location.id,
-                        rank: complaintDetails.complaintAssignment?.user?.issueIncharge?.designation.rank,
-                    },
-                    status: "PENDING",
-                    processAfter: new Date(currentDateTime).toISOString()
-                }
-            });
-
-            if (!outboxDetails) {
-                throw new Error("Could not create outbox details.");
-            }
-
-            return complaintDetails;
-        });
-
-
-        if (!createComplaint) {
-            throw new Error("Could not create complaint. Please try again");
-        }
     } catch (err) {
         console.error(err);
     } finally {

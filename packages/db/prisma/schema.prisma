@@ -54,7 +54,6 @@ model Complaint {
   complaintHistory    ComplaintHistory[]
   complaintResolution ComplaintResolution?
   feedback            Feedback?
-  notification        Notification[]
   tags                ComplaintCategory[]
   attachments         Attachment[]
   upvotes             Upvote[]
@@ -127,7 +126,7 @@ model ComplaintHistory {
   complaintId String
   complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
   handledBy   String?
-  user        User?    @relation(fields: [handledBy], references: [id], onDelete: SetNull)
+  user        User?     @relation(fields: [handledBy], references: [id], onDelete: SetNull)
   eventType   String
   happenedAt  DateTime
 }
@@ -179,13 +178,13 @@ model IssueIncharge {
 }
 
 model Notification {
-  id          String    @id @default(uuid())
+  id          String     @id @default(uuid())
   userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  complaintId String
-  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
-  message     String
-  sentAt      DateTime
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventType   String
+  isRead      Boolean    @default(false)
+  payload     Json
+  createdAt   DateTime @default(now())
 }
 
 model Occupation {
