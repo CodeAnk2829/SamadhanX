@@ -1,5 +1,5 @@
 import { prisma } from "@repo/db/client";
-import { CreateComplaintSchema, UpdateComplaintSchema } from "@repo/types/complaintTypes";
+import { CreateComplaintSchema, FilterComplaintSchema, UpdateComplaintSchema } from "@repo/types/complaintTypes";
 import { UPDATED, CLOSED, RECREATED, DELEGATED, ESCALATED, RESOLVED } from "@repo/types/wsMessageTypes";
 import e, { request } from "express";
 
@@ -1145,14 +1145,31 @@ export const getFilteredComplaints = async (req: any, res: any) => {
     try {
 
         const { requestComingFrom } = req.query;
-        const { filterByLocations, filterByTags, filterByStatus } = req.body; // { filterByLocations: int[], filterByTags: int[], filterByStatus: string[] }
+        const parsedData = FilterComplaintSchema.safeParse(req.body); // { filterByLastNDays: int, filterByLocations: int[], filterByTags: int[], filterByStatus: string[] }
         const userRole = req.user.role;
+
+        if (!parsedData.success) {
+            throw new Error("Invalid inputs");
+        }
+
+        const { filterByLastNDays, filterByLocations, filterByTags, filterByStatus } = parsedData.data;
 
         if (requestComingFrom !== "home" && requestComingFrom !== "dashboard") {
             throw new Error("Invalid request");
         }
 
+        let whereClauseForSelectedDateByUser = {};
+
+        if (filterByLastNDays && (filterByLastNDays > 0 && filterByLastNDays <= 90)) {
+            whereClauseForSelectedDateByUser = {
+                createdAt: {
+                    gte: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) - (filterByLastNDays * 24 * 60 * 60 * 1000))
+                }
+            }
+        }
+
         let complaints = await prisma.complaint.findMany({
+            where: whereClauseForSelectedDateByUser,
             orderBy: {
                 createdAt: "desc" // get recent complaints first
             },
@@ -1298,153 +1315,6 @@ export const getFilteredComplaints = async (req: any, res: any) => {
         res.status(400).json({
             ok: false,
             error: err instanceof Error ? err.message : "An error occurred while fetching the complaint at a location"
-        });
-    }
-}
-
-export const getComplaintsCreatedInLastNDays = async (req: any, res: any) => {
-    try {
-        const days = req.query.days;
-        const userId = req.user.id;
-
-        if (!days) {
-            throw new Error("Please provide the number of days");
-        }
-
-        if (days < 0 || days > 90) {
-            throw new Error("Days should be between 0 and 90");
-        }
-
-        const complaints = await prisma.complaint.findMany({
-            where: {
-                createdAt: {
-                    gte: new Date(Date.now() + (5 * 60 * 60 * 1000) + (30 * 60 * 1000) - (days * 24 * 60 * 60 * 1000))
-                }
-            },
-            orderBy: {
-                createdAt: "desc" // get recent complaints first
-            },
-            include: {
-                attachments: {
-                    select: {
-                        id: true,
-                        imageUrl: true
-                    }
-                },
-                tags: {
-                    select: {
-                        tags: {
-                            select: {
-                                tagName: true
-                            }
-                        }
-                    }
-                },
-                user: {
-                    select: {
-                        id: true,
-                        name: true,
-                    }
-                },
-                complaintAssignment: {
-                    select: {
-                        assignedAt: true,
-                        user: {
-                            select: {
-                                id: true,
-                                name: true,
-                                phoneNumber: true,
-                                email: true,
-                                issueIncharge: {
-                                    select: {
-                                        designation: {
-                                            select: {
-                                                designation: {
-                                                    select: {
-                                                        designationName: true,
-                                                    }
-                                                },
-                                                rank: true,
-                                            }
-                                        },
-                                        location: true,
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-            }
-        });
-
-        if (!complaints) {
-            throw new Error("An error occurred while fetching complaints");
-        }
-
-        let complaintResponse: any = [];
-        complaints.forEach((complaint: any) => {
-            if (complaint.postAsAnonymous) {
-                complaintResponse.push({
-                    ...complaint,
-                    user: {
-                        id: complaint.user.id,
-                        name: "Anonymous",
-                    }
-                });
-            } else {
-                complaintResponse.push(complaint);
-            }
-        });
-
-        // all upvoted complaints by the currently logged in user
-        const upvotedComplaints = await prisma.upvote.findMany({
-            where: {
-                userId
-            },
-            select: {
-                complaintId: true
-            }
-        });
-
-        const complaintDetails = complaintResponse.map((complaint: any) => {
-            return {
-                id: complaint.id,
-                title: complaint.title,
-                description: complaint.description,
-                access: complaint.access,
-                postAsAnonymous: complaint.postAsAnonymous,
-                status: complaint.status,
-                actionTaken: complaint.actionTaken,
-                upvotes: complaint.totalUpvotes,
-                complainerId: complaint.userId,
-                complainerName: complaint.user.name,
-                attachments: complaint.attachments,
-                tags: complaint.tags.map((tag: any) => tag.tags.tagName),
-                assignedTo: complaint.complaintAssignment.user.name,
-                inchargeId: complaint.complaintAssignment.user.id,
-                inchargeName: complaint.complaintAssignment.user.name,
-                inchargeEmail: complaint.complaintAssignment.user.email,
-                inchargePhone: complaint.complaintAssignment.user.phoneNumber,
-                designation: complaint.complaintAssignment.user.issueIncharge.designation.designation.designationName,
-                inchargeRank: complaint.complaintAssignment.user.issueIncharge.designation.rank,
-                location: complaint.complaintAssignment.user.issueIncharge.location.locationName,
-                assignedAt: complaint.complaintAssignment.assignedAt,
-                createdAt: complaint.createdAt,
-                expiredAt: complaint.expiredAt,
-            }
-        });
-
-        res.status(200).json({
-            ok: true,
-            message: `Complaints created in last ${days} days`,
-            complaintDetails,
-            upvotedComplaints: upvotedComplaints.map((u: any) => u.complaintId),
-        });
-
-    } catch (err) {
-        res.status(400).json({
-            ok: false,
-            error: err instanceof Error ? err.message : "An error occurred while fetching complaints in last 7 days"
         });
     }
 }
