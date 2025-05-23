@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "aws-sdk": "^2.1692.0",
+    "esbuild": "^0.25.4",
     "mock-aws-s3": "^4.0.2",
     "nock": "^14.0.0"
   }

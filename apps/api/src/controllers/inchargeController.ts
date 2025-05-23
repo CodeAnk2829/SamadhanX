@@ -242,6 +242,9 @@ export const delegateComplaint = async (req: any, res: any) => {
             }
 
             return complaintDelegation;
+        }, {
+            maxWait: 5000, // default: 2000
+            timeout: 30000, // default: 5000
         });
 
         if (!delegate) {
@@ -510,6 +513,9 @@ export const escalateComplaint = async (req: any, res: any) => {
             }
 
             return complaintEscalation;
+        }, {
+            maxWait: 5000, // default: 2000
+            timeout: 30000, // default: 5000
         });
 
         if (!escalatedComplaint) {
@@ -933,6 +939,9 @@ export const markComplaintAsResolved = async (req: any, res: any) => {
 
 
             return complaintResolution;
+        }, {
+            maxWait: 5000, // default: 2000
+            timeout: 30000, // default: 5000
         });
 
         if (!resolvedComplaint) {

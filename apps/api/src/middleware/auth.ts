@@ -8,7 +8,13 @@ const secret: string | undefined = process.env.JWT_SECRET;
 
 export const authMiddleware = async (req: any, res: any, next: NextFunction) => {
     try {
-        const token = req.cookies.token;
+        let token = req.cookies.token;
+
+        // Also check the Authorization header only for the claude MCP server
+        if (!token && req.headers.authorization?.startsWith("Bearer ")) {
+            token = req.headers.authorization.split(" ")[1];
+        }
+
         if(!token) {
             throw new Error("No token provided");
         }

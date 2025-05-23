@@ -1,6 +1,6 @@
 import Router from "express";
 import { authMiddleware, authorizeMiddleware } from "../middleware/auth";
-import { closeComplaint, createComplaint, deletedComplaintById, getAllComplaints, getComplaintById, getComplaintHistory, getComplaintsByLocation, getComplaintsCreatedInLastNDays, getUsersComplaints, recreateComplaint, updateComplaintById, upvoteComplaint } from "../controllers/complaintController";
+import { closeComplaint, createComplaint, deletedComplaintById, getAllComplaints, getComplaintById, getComplaintHistory, getFilteredComplaints, getComplaintsCreatedInLastNDays, getUsersComplaints, recreateComplaint, updateComplaintById, upvoteComplaint } from "../controllers/complaintController";
 
 const router = Router();
 
@@ -22,6 +22,7 @@ router.post("/create", authMiddleware, authorizeMiddleware(Role), createComplain
 router.post("/upvote/:id", authMiddleware, authorizeMiddleware(Role), upvoteComplaint); // upvote a complaint
 router.post("/close", authMiddleware, authorizeMiddleware(Role), closeComplaint); // close a complaint
 router.post("/recreate/:id", authMiddleware, authorizeMiddleware(Role), recreateComplaint); // recreate a complaint by id
+router.post("/get/filtered-complaints", authMiddleware, authorizeMiddleware(ExceptionalRole), getFilteredComplaints); // get all complaints by location id
 
 // READ
 router.get("/get/all-complaints", authMiddleware, authorizeMiddleware(Role), getAllComplaints); // get all complaints
@@ -29,7 +30,6 @@ router.get("/get/complaint/:id", authMiddleware, authorizeMiddleware(Exceptional
 router.get("/get/user-complaints", authMiddleware, authorizeMiddleware(Role), getUsersComplaints); // get an user's complaints
 router.get("/get/complaint-history/:id", authMiddleware, authorizeMiddleware(Role), getComplaintHistory); // get complaint history by complaint id
 router.get("/get/complaints-by-days", authMiddleware, authorizeMiddleware(Role), getComplaintsCreatedInLastNDays); // get all complaints by days
-router.get("/get/complaints-by-location/:locationId", authMiddleware, authorizeMiddleware(ExceptionalRole), getComplaintsByLocation); // get all complaints by location id
 
 // UPDATE
 router.patch("/update/:id", authMiddleware, authorizeMiddleware(Role), updateComplaintById);

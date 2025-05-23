@@ -209,6 +209,9 @@ export const createComplaint = async (req: any, res: any) => {
             }
 
             return complaintDetails;
+        }, {
+            maxWait: 5000, // default: 2000
+            timeout: 30000, // default: 5000
         });
 
 
@@ -398,6 +401,9 @@ export const closeComplaint = async (req: any, res: any) => {
             }
 
             return closeComplaint;
+        }, {
+            maxWait: 5000, // default: 2000
+            timeout: 30000, // default: 5000
         });
 
         if (!complaintClosed) {
@@ -525,6 +531,9 @@ export const deletedComplaintById = async (req: any, res: any) => {
             }
 
             return complaintDeletion;
+        }, {
+            maxWait: 5000, // default: 2000
+            timeout: 30000, // default: 5000
         });
 
 
@@ -771,6 +780,9 @@ export const recreateComplaint = async (req: any, res: any) => {
             }
 
             return complaintDetails;
+        }, {
+            maxWait: 5000, // default: 2000
+            timeout: 30000, // default: 5000
         });
 
         if (!complaintRecreation) {
@@ -830,8 +842,8 @@ export const getAllComplaints = async (req: any, res: any) => {
     try {
         const userId = req.user.id;
         const userRole = req.user.role;
-        let { requestComingFrom } = req.query;
-        
+        const { requestComingFrom } = req.query;
+
         if (!userId) {
             throw new Error("Unauthorized");
         }
@@ -841,7 +853,6 @@ export const getAllComplaints = async (req: any, res: any) => {
         }
 
         const complaints = await prisma.complaint.findMany({
-            // where: whereClause,
             orderBy: {
                 createdAt: "desc" // get recent complaints first
             },
@@ -1130,26 +1141,113 @@ export const getComplaintById = async (req: any, res: any) => {
     }
 }
 
-export const getComplaintsByLocation = async (req: any, res: any) => {
+export const getFilteredComplaints = async (req: any, res: any) => {
     try {
-        const { locationId } = req.params;
+
         const { requestComingFrom } = req.query;
+        const { filterByLocations, filterByTags, filterByStatus } = req.body; // { filterByLocations: int[], filterByTags: int[], filterByStatus: string[] }
         const userRole = req.user.role;
 
         if (requestComingFrom !== "home" && requestComingFrom !== "dashboard") {
             throw new Error("Invalid request");
         }
 
-        const complaints = await prisma.complaint.findMany({
-            where: {
-                complaintAssignment: {
-                    user: {
-                        issueIncharge: {
-                            locationId: parseInt(locationId)
-                        }
-                    }
-                }
-            },
+        // const complaints = await prisma.complaintCategory.findMany({
+        //     where: {
+        //         AND: [
+        //             {
+        //                 complaints: {
+        //                     AND: [
+        //                         {
+        //                             complaintAssignment: {
+        //                                 user: {
+        //                                     issueIncharge: {
+        //                                         locationId: {
+        //                                             in: filterByLocations
+        //                                         }
+        //                                     }
+        //                                 }
+        //                             }
+        //                         },
+        //                         {
+        //                             status: {
+        //                                 in: filterByStatus
+        //                             }
+        //                         }
+        //                     ]
+        //                 },
+        //             }, 
+        //             {
+        //                 tagId: {
+        //                     in: filterByTags
+        //                 }
+        //             }
+        //         ]
+        //     },
+        //     orderBy: {
+        //         complaints: {
+        //             createdAt: "desc" // get recent complaints first
+        //         }
+        //     },
+        //     include: {
+        //         complaints: {
+        //             include: {
+        //                 attachments: {
+        //                     select: {
+        //                         id: true,
+        //                         imageUrl: true
+        //                     }
+        //                 },
+        //                 tags: {
+        //                     select: {
+        //                         tags: {
+        //                             select: {
+        //                                 tagName: true
+        //                             }
+        //                         }
+        //                     }
+        //                 },
+        //                 user: {
+        //                     select: {
+
+        //                         name: true,
+        //                         email: true,
+        //                         phoneNumber: true,
+        //                     }
+        //                 },
+        //                 complaintAssignment: {
+        //                     select: {
+        //                         assignedAt: true,
+        //                         user: {
+        //                             select: {
+        //                                 id: true,
+        //                                 name: true,
+        //                                 phoneNumber: true,
+        //                                 issueIncharge: {
+        //                                     select: {
+        //                                         designation: {
+        //                                             select: {
+        //                                                 designation: {
+        //                                                     select: {
+        //                                                         designationName: true,
+        //                                                     }
+        //                                                 },
+        //                                                 rank: true,
+        //                                             }
+        //                                         },
+        //                                         location: true,
+        //                                     }
+        //                                 }
+        //                             }
+        //                         }
+        //                     }
+        //                 },
+        //             },
+        //         }
+        //     }
+        // });
+
+        let complaints = await prisma.complaint.findMany({
             orderBy: {
                 createdAt: "desc" // get recent complaints first
             },
@@ -1162,15 +1260,12 @@ export const getComplaintsByLocation = async (req: any, res: any) => {
                 },
                 tags: {
                     select: {
-                        tags: {
-                            select: {
-                                tagName: true
-                            }
-                        }
+                        tags: true,
                     }
                 },
                 user: {
                     select: {
+                        id: true,
                         name: true,
                         email: true,
                         phoneNumber: true,
@@ -1210,6 +1305,18 @@ export const getComplaintsByLocation = async (req: any, res: any) => {
             throw new Error("Could not fetch the required complaint");
         }
 
+        complaints = complaints.filter((complaint: any) => {
+            return (filterByLocations && filterByLocations.length > 0) ? filterByLocations.includes(complaint.complaintAssignment.user.issueIncharge.location.id) : true;
+        });
+
+        complaints = complaints.filter((complaint: any) => {
+            return (filterByTags && filterByTags.length > 0) ? complaint.tags.some((tag: any) => filterByTags.includes(tag.tags.id)) : true;
+        });
+
+        complaints = complaints.filter((complaint: any) => {
+            return (filterByStatus && filterByStatus.length > 0) ? filterByStatus.includes(complaint.status) : true;
+        });
+
         let complaintResponse: any = [];
 
         complaints.forEach((complaint: any) => {
@@ -1219,15 +1326,17 @@ export const getComplaintsByLocation = async (req: any, res: any) => {
                     user: {
                         id: complaint.user.id,
                         name: "Anonymous",
-                    }
+                        email: complaint.user.email,
+                        phoneNumber: complaint.user.phoneNumber
+                    }  
                 });
             } else {
                 complaintResponse.push(complaint);
             }
         });
-
+        
         if (userRole === "STUDENT" || userRole === "FACULTY") {
-            complaintResponse = requestComingFrom === "home"
+            complaintResponse = (requestComingFrom === "home")
                 ? complaintResponse.filter((complaint: any) => complaint.access === "PUBLIC")
                 : complaintResponse.filter((complaint: any) => complaint.access === "PUBLIC"
                     || (complaint.access === "PRIVATE" && complaint.userId === req.user.id));
@@ -1247,7 +1356,7 @@ export const getComplaintsByLocation = async (req: any, res: any) => {
 
         const complaintDetails = complaintResponse.map((complaint: any) => {
             return {
-                id: complaint.id,
+                id: complaint.complaintId,
                 title: complaint.title,
                 description: complaint.description,
                 access: complaint.access,
@@ -1259,7 +1368,7 @@ export const getComplaintsByLocation = async (req: any, res: any) => {
                 complainerName: complaint.user.name,
                 complainerEmail: complaint.user.email,
                 complainerPhone: complaint.user.phoneNumber,
-                attachments: complaint.attachments,
+                attachments: complaint.attachments.map((attachment: any) => attachment.imageUrl),
                 tags: complaint.tags.map((tag: any) => tag.tags.tagName),
                 assignedTo: complaint.complaintAssignment.user.name,
                 inchargeId: complaint.complaintAssignment.user.id,
@@ -1269,6 +1378,7 @@ export const getComplaintsByLocation = async (req: any, res: any) => {
                 location: complaint.complaintAssignment.user.issueIncharge.location.locationName,
                 assignedAt: complaint.complaintAssignment.assignedAt,
                 createdAt: complaint.createdAt,
+                closedAt: complaint.closedAt,
                 expiredAt: complaint.expiredAt,
             }
         });
@@ -1878,6 +1988,9 @@ export const updateComplaintById = async (req: any, res: any) => {
             }
 
             return updateComplaint;
+        }, {
+            maxWait: 5000, // default: 2000
+            timeout: 30000, // default: 5000
         });
 
 
@@ -2045,6 +2158,9 @@ export const upvoteComplaint = async (req: any, res: any) => {
             }
 
             return upvoteComplaint;
+        }, {
+            maxWait: 5000, // default: 2000
+            timeout: 30000, // default: 5000
         });
 
         if (!upvotes) {

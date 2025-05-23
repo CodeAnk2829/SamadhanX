@@ -188,31 +188,31 @@ const Home = () => {
 
       case "ESCALATED":
         console.log("Complaint escalated:", message.data);
-        const escalateComplaint = (complaint) => {
-          if (complaint.id === message.data.complaintId) {
-            return {
-              ...complaint,
-              //status: "ESCALATED",
-              assignedTo: message.data.inchargeName,
-              assignedAt: moment(message.data.escalatedAt || new Date()).format(),
-            };
-          }
-          return complaint;
-        };
+      //   const escalateComplaint = (complaint) => {
+      //     if (complaint.id === message.data.complaintId) {
+      //       return {
+      //         ...complaint,
+      //         //status: "ESCALATED",
+      //         assignedTo: message.data.inchargeName,
+      //         assignedAt: moment(message.data.escalatedAt || new Date()).format(),
+      //       };
+      //     }
+      //     return complaint;
+      //   };
 
-        setComplaints((prev) => prev.map(escalateComplaint));
-        setFilteredComplaints((prev) => prev.map(escalateComplaint));
-        break;
+      //   setComplaints((prev) => prev.map(escalateComplaint));
+      //   setFilteredComplaints((prev) => prev.map(escalateComplaint));
+      //   break;
 
-      case "UPVOTED":
-        const updatedComplaints = complaints.map((complaint) => {
-          if (complaint.id === message.data.complaintId) {
-            return { ...complaint, upvotes: message.data.upvotes };
-          }
-          return complaint;
-        });
-        setComplaints(updatedComplaints);
-        setFilteredComplaints(updatedComplaints);
+      // case "UPVOTED":
+      //   const updatedComplaints = complaints.map((complaint) => {
+      //     if (complaint.id === message.data.complaintId) {
+      //       return { ...complaint, upvotes: message.data.upvotes };
+      //     }
+      //     return complaint;
+      //   });
+        // setComplaints(updatedComplaints);
+        // setFilteredComplaints(updatedComplaints);
         
         setUpvotedComplaints((prevUpvoted) =>
           message.data.hasUpvoted
