@@ -109,3 +109,39 @@ SamadhanX is an easy-to-use online platform that helps colleges manage student c
 - Tags
 - Attachments  
 **Note:** Location cannot be updated.
+
+
+# Installation 
+1. Clone the repository 
+ ```
+	https://github.com/CodeAnk2829/SamadhanX.git 
+ ```
+ 2. Run `redis` container using docker
+ ```
+	docker run -p 6379:6379 -d redis
+ ```
+ > Follow the official link to download and install Docker on your machine:
+ [https://docs.docker.com/get-started/get-docker/](https://docs.docker.com/get-started/get-docker/)
+  3. Go to `./packages/db` folder and run migration command
+```
+	npx prisma migrate reset
+```
+> NOTE: Put your Postgres DATABASE_URL inside the `.env` file before you run migration.  
+	   In case you want to run your database on your local machine, you can run it by using docker
+	   - Start `Docker desktop` in case of Windows or Mac. You can use docker natively on Linux via your terminal
+	   - Run the following command: `docker run -p 5432:5432 -e POSTGRES_PASSWORD=<your_password> -d postgres` and you are good to go.
+4. Install `pnpm` on your machine
+```
+	npm install -g pnpm
+```
+5. Inside the root directory i.e. `/SamadhanX` run the following commands
+```
+	pnpm install 
+	pnpm run build
+```
+> NOTE: if any error occurs at `build` then try running build command inside the following folders: `./apps/api`, `./apps/processor`, `./apps/worker` and `./apps/websocket`
+6. After `build` run the servers
+```	
+	pnpm run dev
+```
+> Website is live at [http://localhost:5173](http://localhost:5173/)
