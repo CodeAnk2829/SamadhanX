@@ -144,4 +144,4 @@ SamadhanX is an easy-to-use online platform that helps colleges manage student c
 ```	
 	pnpm run dev
 ```
-> Website is live at [http://localhost:5173](http://localhost:5173/)
+> Website is live at [http://localhost:5173/signup](http://localhost:5173/signup)
